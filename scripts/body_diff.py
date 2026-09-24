@@ -125,6 +125,12 @@ SECTION_MACROS = {"part", "chapter", "section", "subsection", "subsubsection",
 SECTION_LEVEL = {"part": 0, "chapter": 0, "section": 1, "subsection": 2,
                  "subsubsection": 3, "paragraph": 4, "subparagraph": 5}
 
+# what a citation command MEANS; a change of class at any position is a content change
+CITE_CLASS = {"citep": "paren", "citealp": "paren", "Citep": "paren", "parencite": "paren", "autocite": "paren",
+              "citep*": "paren", "citet": "text", "citealt": "text", "Citet": "text", "textcite": "text", "citet*": "text",
+              "citeauthor": "author", "citeauthor*": "author", "citeA": "text", "citeN": "text",
+              "citeyear": "year", "citeyearpar": "year", "shortcite": "year", "shortciteA": "year", "shortciteN": "year",
+              "citenum": "num", "citetitle": "title", "newcite": "text"}
 PROTECTED_URL_MACROS = ("url", "href", "path", "nolinkurl")
 GRAPHIC_EXTS = (".pdf", ".png", ".jpg", ".jpeg", ".eps", ".ps", ".tif", ".tiff", ".svg")
 
@@ -349,7 +355,8 @@ def normalise_colspec(spec: str) -> str:
 class Structurer:
     """Turn raw tokens into classified, normalised tokens."""
 
-    def __init__(self, raws: list[Raw]):
+    def __init__(self, raws: list[Raw], cite_alias: dict[str, str] | None = None):
+        self.cite_alias = cite_alias or {}
         self.r = raws
         self.match = match_braces(raws)
         self.i = 0
@@ -561,7 +568,9 @@ class Structurer:
             j, keys = self.take_group(j, mark="format")
             keys = ",".join(k.strip() for k in (keys or "").split(",") if k.strip())
             self.cite_keys.extend(keys.split(",") if keys else [])
-            key = "\\CITE" + "".join(f"[{o}]" for o in notes) + "{" + keys + "}"
+            meaning = self.cite_alias.get(name, name)              # e.g. AAAI: \\cite means \\citep
+            cls = CITE_CLASS.get(meaning, "cite")
+            key = f"\\CITE:{cls}" + "".join(f"[{o}]" for o in notes) + "{" + keys + "}"
             self.emit(key, "content", line, t.text + "{" + keys + "}", name)
             self.i = j
             return False
@@ -797,8 +806,8 @@ def split_subcaptions(hoisted: list[Tok], keep: list[Tok]) -> tuple[list[Tok], l
     return out, keep
 
 
-def tokenize(body: str, base_line: int = 0) -> tuple[list[Tok], Structurer]:
-    s = Structurer(raw_tokens(body, base_line))
+def tokenize(body: str, base_line: int = 0, cite_alias: dict[str, str] | None = None) -> tuple[list[Tok], Structurer]:
+    s = Structurer(raw_tokens(body, base_line), cite_alias)
     toks = canonicalize_captions(s.run())
     # drop paragraph breaks unless surrounded by content on both sides
     cleaned: list[Tok] = []
@@ -950,36 +959,55 @@ def preamble_defs(pre: str) -> tuple[set[str], set[str], set[str]]:
     return macros, envs, cols
 
 
-DEF_HEAD_RE = re.compile(r"\\(newcommand|renewcommand|providecommand|DeclareRobustCommand|DeclareMathOperator|newtheorem|newcolumntype|newenvironment|renewenvironment|def)\*?")
+DEF_HEAD_RE = re.compile(
+    r"\\(newcommand|renewcommand|providecommand|DeclareRobustCommand|DeclareMathOperator|"
+    r"NewDocumentCommand|RenewDocumentCommand|ProvideDocumentCommand|DeclareDocumentCommand|"
+    r"newtheorem|newcolumntype|newenvironment|renewenvironment|NewDocumentEnvironment|"
+    r"def|edef|gdef|xdef|let)\*?(?![A-Za-z])")
 
 
-def macro_bodies(pre: str) -> dict[str, str]:
-    """name -> normalised definition text for every macro/theorem/column type defined in a preamble."""
-    out: dict[str, str] = {}
+def macro_bodies(pre: str) -> dict[str, str | None]:
+    """name -> normalised definition for everything a preamble defines, whatever the syntax.
+
+    Command macros are keyed by their name alone (`\\score`), so `\\newcommand{\\score}{91.2}`
+    and `\\def\\score{19.2}` compare against each other.  Theorems, column types and
+    environments get their own namespaces.  A definition whose body could not be parsed is
+    recorded as None so the caller can flag it for review instead of passing it."""
+    out: dict[str, str | None] = {}
     for m in DEF_HEAD_RE.finditer(pre):
         kind = m.group(1)
         i = m.end()
-        if kind == "def":
+        if kind in ("def", "edef", "gdef", "xdef"):
             mm = re.match(r"\s*\\([A-Za-z@]+)([^{]*)", pre[i:])
             if not mm:
                 continue
             name, params = "\\" + mm.group(1), mm.group(2)
-            i += mm.end()
-            g = find_matching_brace(pre, i) if i < len(pre) and pre[i] == "{" else -1
-            if g < 0:
-                continue
-            out[name] = re.sub(r"\s+", " ", params.strip() + " " + pre[i + 1:g]).strip()
+            j = i + mm.end()
+            g = find_matching_brace(pre, j) if j < len(pre) and pre[j] == "{" else -1
+            out[name] = re.sub(r"\s+", " ", params.strip() + " " + pre[j + 1:g]).strip() if g >= 0 else None
             continue
-        # {\name} or \name  (newtheorem/newcolumntype/newenvironment take a plain {name})
+        if kind == "let":
+            mm = re.match(r"\s*\\([A-Za-z@]+)\s*=?\s*(\\[A-Za-z@]+|.)", pre[i:])
+            if mm:
+                out["\\" + mm.group(1)] = "let " + mm.group(2)
+            continue
         mm = re.match(r"\s*(\{\s*\\?([A-Za-z@*]+)\s*\}|\\([A-Za-z@]+))", pre[i:])
         if not mm:
             continue
-        name = mm.group(2) or mm.group(3)
-        if kind in ("newcommand", "renewcommand", "providecommand", "DeclareRobustCommand", "DeclareMathOperator"):
-            name = "\\" + name
+        raw_name = mm.group(2) or mm.group(3)
+        if kind in ("newtheorem",):
+            key = "theorem:" + raw_name
+        elif kind == "newcolumntype":
+            key = "coltype:" + raw_name
+        elif kind in ("newenvironment", "renewenvironment", "NewDocumentEnvironment"):
+            key = "env:" + raw_name
+        else:
+            key = "\\" + raw_name
         i += mm.end()
-        parts = []
-        # optional arguments [..][..] then one or two mandatory bodies
+        parts: list[str] = []
+        bodies_needed = 2 if kind in ("newenvironment", "renewenvironment") else (3 if kind == "NewDocumentEnvironment" else 1)
+        bodies = 0
+        ok = True
         while True:
             j = i
             while j < len(pre) and pre[j] in " \t\n":
@@ -987,6 +1015,7 @@ def macro_bodies(pre: str) -> dict[str, str]:
             if j < len(pre) and pre[j] == "[":
                 k = pre.find("]", j)
                 if k < 0:
+                    ok = False
                     break
                 parts.append(pre[j:k + 1])
                 i = k + 1
@@ -994,14 +1023,21 @@ def macro_bodies(pre: str) -> dict[str, str]:
             if j < len(pre) and pre[j] == "{":
                 g = find_matching_brace(pre, j)
                 if g < 0:
+                    ok = False
                     break
                 parts.append(pre[j:g + 1])
                 i = g + 1
-                if kind in ("newenvironment", "renewenvironment") and sum(1 for x in parts if x.startswith("{")) < 2:
+                bodies += 1
+                # xparse: {argspec}{body}; newtheorem: {Title}[within]; command: {body}
+                if kind.endswith("DocumentCommand") and bodies < 2:
                     continue
-                break
+                if bodies >= bodies_needed:
+                    break
+                continue
             break
-        out[f"{kind}:{name}"] = re.sub(r"\s+", " ", "".join(parts)).strip()
+        # compare the *inside* of each brace group so \\newcommand{\\x}{91.2} and \\def\\x{91.2} agree
+        inner = [pt[1:-1] if pt.startswith("{") and pt.endswith("}") else pt for pt in parts]
+        out[key] = re.sub(r"\s+", " ", " ".join(inner)).strip() if ok and parts else None
     return out
 
 
@@ -1096,6 +1132,10 @@ def main() -> int:
     ap.add_argument("--strict-structure", action="store_true", help="structure hunks also fail")
     ap.add_argument("--max-hunks", type=int, default=60, help="hunks to print per class")
     ap.add_argument("--quiet", action="store_true", help="summary only")
+    ap.add_argument("--cite-alias", default="", metavar="A=B,...",
+                    help="what the SOURCE style makes a cite command mean, e.g. cite=citep,shortcite=citeyearpar (AAAI); "
+                         "lets a spelling change that keeps the meaning pass while a meaning change at any position fails")
+    ap.add_argument("--dst-cite-alias", default="", metavar="A=B,...", help="same for the migrated file's style, if it aliases")
     args = ap.parse_args()
 
     try:
@@ -1114,8 +1154,10 @@ def main() -> int:
         print(f"body_diff: {exc}", file=sys.stderr)
         return 2
 
-    a, sa = tokenize(src_body, src_pre.count("\n"))
-    b, sb = tokenize(dst_body, dst_pre.count("\n"))
+    def parse_alias(spec: str) -> dict[str, str]:
+        return {k.strip().lstrip("\\"): v.strip().lstrip("\\") for k, v in (x.split("=", 1) for x in spec.split(",") if "=" in x)}
+    a, sa = tokenize(src_body, src_pre.count("\n"), parse_alias(args.cite_alias))
+    b, sb = tokenize(dst_body, dst_pre.count("\n"), parse_alias(args.dst_cite_alias))
     hunks = diff_tokens(a, b)
     by_cls = {"format": [], "structure": [], "content": []}
     for h in hunks:
@@ -1177,23 +1219,39 @@ def main() -> int:
     collisions = {f: c for f, c in collisions.items() if c}
     # definitions must be identical too: a changed \\newcommand body changes the rendered paper
     src_bodies, dst_bodies = macro_bodies(src_pre), macro_bodies(dst_pre)
-    changed_defs, layout_defs = [], []
+    for f in preamble_inputs(dst_pre, dst_root):
+        for k, v in macro_bodies(strip_comments(f.read_text(encoding="utf-8", errors="replace"))).items():
+            dst_bodies.setdefault(k, v)
+    changed_defs, layout_defs, unparsed_defs, new_defs = [], [], [], []
     for key, body in src_bodies.items():
-        if key in dst_bodies and dst_bodies[key] != body:
-            kind, _, name = key.partition(":")
-            plain = name.lstrip("\\")
-            if kind == "newcolumntype" or plain in FORMAT_TARGETS:
-                layout_defs.append(f"{name}: {body[:40]!r} -> {dst_bodies[key][:40]!r}")
+        if key not in dst_bodies:
+            continue                                   # absence is handled by the missing-but-used check
+        other = dst_bodies[key]
+        if body is None or other is None:
+            unparsed_defs.append(key)
+            continue
+        if other != body:
+            plain = key.split(":", 1)[-1].lstrip("\\")
+            if key.startswith("coltype:") or plain in FORMAT_TARGETS:
+                layout_defs.append(f"{key}: {body[:40]!r} -> {other[:40]!r}")
             else:
-                changed_defs.append(f"{name}: {body[:60]!r} -> {dst_bodies[key][:60]!r}")
+                changed_defs.append(f"{key}: {body[:60]!r} -> {other[:60]!r}")
+    for key, other in dst_bodies.items():
+        if key not in src_bodies and key.startswith("\\") and key.lstrip("\\") in sb.used_cs:
+            new_defs.append(f"{key} = {str(other)[:50]!r}")
     checks["macros"] = {"src_defined": len(sm | se), "missing_used_in_dst": missing_macros + missing_envs,
                         "collisions_with_inputs": collisions,
                         "columntypes_missing": sorted(sc - dc),
-                        "definitions_changed": changed_defs, "layout_definitions_changed": layout_defs}
+                        "definitions_changed": changed_defs, "layout_definitions_changed": layout_defs,
+                        "definitions_unparsed": unparsed_defs, "new_definitions_used_by_body": new_defs}
     if changed_defs:
         problems.append(f"macro definitions changed (rendered text would differ): {changed_defs}")
     if layout_defs:
         reviews.append(f"layout-only definitions changed: {layout_defs}")
+    if unparsed_defs:
+        reviews.append(f"definitions that could not be parsed reliably -- compare by hand: {unparsed_defs}")
+    if new_defs:
+        reviews.append(f"macros defined only in the migrated preamble and used by the body: {new_defs}")
     if missing_macros or missing_envs:
         problems.append(f"macros/environments used by migrated body but no longer defined: "
                         f"{missing_macros + missing_envs}")

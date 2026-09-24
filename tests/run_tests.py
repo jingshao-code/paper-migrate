@@ -149,7 +149,7 @@ def main() -> int:
         intro = wout.split("\\section{Introduction}")[1][:400]
         check("\\begin{wrapfigure}" in intro and intro.index("\\begin{wrapfigure}") < intro.index("Prior work"), "wrap anchored at the referencing paragraph, before its first word")
         check(wraps.get("fig:overview", {}).get("status") == "refused", f"full-width figure refused: {wraps.get('fig:overview', {}).get('reason', '')[:60]}")
-        r = run(PY, S / "body_diff.py", "--src", src / "main.tex", "--dst", wdst / "main.tex", "--json", tmp / "wrapdiff.json")
+        r = run(PY, S / "body_diff.py", "--src", src / "main.tex", "--dst", wdst / "main.tex", "--json", tmp / "wrapdiff.json", "--cite-alias", "cite=citep,shortcite=citeyearpar")
         wd = json.loads((tmp / "wrapdiff.json").read_text())
         check(r.returncode == 0 and wd["hunks"]["content"] == 0, "body_diff PASS after wrapping (0 content hunks)")
         check(wd["hunks"]["structure"] == 1 and "moved block" in wd["hunk_details"]["structure"][0]["note"], "wrap shows as one moved-block structure hunk")
@@ -172,7 +172,7 @@ def main() -> int:
         check(bool(wt) and wt.find("\\caption{Main results") < wt.find("\\begin{tabular}"), "table caption moved above the tabular")
         check("\\resizebox{\\linewidth}" in wt, "resizebox inside the wraptable retargeted to \\linewidth")
         check(wj2["table_captions"]["moved"] >= 1, "caption move counted in the report")
-        r = run(PY, S / "body_diff.py", "--src", src / "main.tex", "--dst", wdst / "main.tex", "--json", tmp / "wrapdiff2.json")
+        r = run(PY, S / "body_diff.py", "--src", src / "main.tex", "--dst", wdst / "main.tex", "--json", tmp / "wrapdiff2.json", "--cite-alias", "cite=citep,shortcite=citeyearpar")
         wd2 = json.loads((tmp / "wrapdiff2.json").read_text())
         notes = [h["note"] for h in wd2["hunk_details"]["structure"]]
         check(r.returncode == 0 and wd2["hunks"]["content"] == 0, "body_diff PASS after table wrap + caption move (0 content hunks)")
@@ -185,7 +185,7 @@ def main() -> int:
             "--rules", rules, "--preamble", drafted)
         run(PY, S / "layout_figures.py", "--src", src / "main.tex", "--in", cdst / "main.tex", "--out", cdst / "main.tex", "--force",
             "--src-venue", "aaai2027", "--dst-venue", "iclr2027", "--table-captions", "above")
-        r = run(PY, S / "body_diff.py", "--src", src / "main.tex", "--dst", cdst / "main.tex", "--json", tmp / "capdiff.json")
+        r = run(PY, S / "body_diff.py", "--src", src / "main.tex", "--dst", cdst / "main.tex", "--json", tmp / "capdiff.json", "--cite-alias", "cite=citep,shortcite=citeyearpar")
         cd = json.loads((tmp / "capdiff.json").read_text())
         cnotes = [h["note"] for h in cd["hunk_details"]["structure"]]
         check(r.returncode == 0 and cd["hunks"]["content"] == 0 and cd["hunks"]["structure"] == 0,
@@ -240,7 +240,7 @@ def main() -> int:
 
         print("[3] body_diff on the migrated copy")
         rep = tmp / "good.json"
-        r = run(PY, S / "body_diff.py", "--src", src / "main.tex", "--dst", dst / "main.tex", "--json", rep)
+        r = run(PY, S / "body_diff.py", "--src", src / "main.tex", "--dst", dst / "main.tex", "--json", rep, "--cite-alias", "cite=citep,shortcite=citeyearpar")
         j = json.loads(rep.read_text())
         check(r.returncode == 0 and j["passed"], "format-only migration -> PASS")
         check(j["hunks"]["content"] == 0, "0 content hunks")
@@ -266,7 +266,7 @@ def main() -> int:
         bad = bad.replace("\\section{Conclusion}\nWe conclude.\n", "\\section{Conclusion}\n\nWe conclude.\n\nWe also add a sentence.\n", 1)
         (dst / "main_bad.tex").write_text(bad)
         rep2 = tmp / "bad.json"
-        r = run(PY, S / "body_diff.py", "--src", src / "main.tex", "--dst", dst / "main_bad.tex", "--json", rep2)
+        r = run(PY, S / "body_diff.py", "--src", src / "main.tex", "--dst", dst / "main_bad.tex", "--json", rep2, "--cite-alias", "cite=citep,shortcite=citeyearpar")
         j2 = json.loads(rep2.read_text())
         check(r.returncode == 1 and not j2["passed"], "content edits -> FAIL")
         check(j2["hunks"]["content"] >= 4, f"content hunks detected ({j2['hunks']['content']})")
@@ -277,18 +277,39 @@ def main() -> int:
         print("[4b] body_diff catches a changed macro definition and hidden/recased text")
         chg = out.replace("\\newcommand{\\method}{\\textsc{Toy}}", "\\newcommand{\\method}{\\textsc{Other}}", 1)
         (dst / "main_def.tex").write_text(chg)
-        r = run(PY, S / "body_diff.py", "--src", src / "main.tex", "--dst", dst / "main_def.tex", "--quiet")
+        r = run(PY, S / "body_diff.py", "--src", src / "main.tex", "--dst", dst / "main_def.tex", "--quiet", "--cite-alias", "cite=citep,shortcite=citeyearpar")
         check(r.returncode == 1 and "definitions changed" in r.stdout and "method" in r.stdout, "changed \\newcommand body -> FAIL")
         hid = out.replace("We conclude.", "\\textcolor{white}{We conclude.}", 1)
         (dst / "main_hid.tex").write_text(hid)
-        r = run(PY, S / "body_diff.py", "--src", src / "main.tex", "--dst", dst / "main_hid.tex", "--quiet")
+        r = run(PY, S / "body_diff.py", "--src", src / "main.tex", "--dst", dst / "main_hid.tex", "--quiet", "--cite-alias", "cite=citep,shortcite=citeyearpar")
         check(r.returncode == 1, "text wrapped in \\textcolor{white} -> content hunk (not whitelisted)")
+        d2 = out.replace("\\newcommand{\\method}{\\textsc{Toy}}", "\\def\\method{\\textsc{Other}}", 1)
+        (dst / "main_def2.tex").write_text(d2)
+        r = run(PY, S / "body_diff.py", "--src", src / "main.tex", "--dst", dst / "main_def2.tex", "--quiet", "--cite-alias", "cite=citep,shortcite=citeyearpar")
+        check(r.returncode == 1 and "definitions changed" in r.stdout, "\\newcommand -> \\def with a different body -> FAIL (compared by name)")
+        d3 = out.replace("\\newcommand{\\method}{\\textsc{Toy}}", "\\def\\method{\\textsc{Toy}}", 1)
+        (dst / "main_def3.tex").write_text(d3)
+        r = run(PY, S / "body_diff.py", "--src", src / "main.tex", "--dst", dst / "main_def3.tex", "--quiet", "--cite-alias", "cite=citep,shortcite=citeyearpar")
+        check(r.returncode == 0, "\\newcommand -> \\def with the SAME body -> PASS")
+        d4 = out.replace("\\newcommand{\\method}{\\textsc{Toy}}", "\\NewDocumentCommand{\\method}{}{\\textsc{Other}}", 1)
+        (dst / "main_def4.tex").write_text(d4)
+        r = run(PY, S / "body_diff.py", "--src", src / "main.tex", "--dst", dst / "main_def4.tex", "--quiet", "--cite-alias", "cite=citep,shortcite=citeyearpar")
+        check(r.returncode == 1 and "definitions changed" in r.stdout, "\\NewDocumentCommand with a different body -> FAIL")
+        sw = out.replace("\\citep{smith2020,doe2021}", "\\citet{smith2020,doe2021}", 1)
+        (dst / "main_cite.tex").write_text(sw)
+        r = run(PY, S / "body_diff.py", "--src", src / "main.tex", "--dst", dst / "main_cite.tex", "--json", tmp / "citediff.json", "--cite-alias", "cite=citep,shortcite=citeyearpar")
+        cj2 = json.loads((tmp / "citediff.json").read_text())
+        check(r.returncode == 1 and cj2["hunks"]["content"] >= 1, "parenthetical -> textual citation at one position -> content FAIL")
+        r = run(PY, S / "body_diff.py", "--src", src / "main.tex", "--dst", dst / "main.tex", "--quiet")
+        check(r.returncode == 1, "without --cite-alias, AAAI's \\cite vs natbib \\citep is (correctly) not assumed equal")
+        for f in ("main_def2.tex", "main_def3.tex", "main_def4.tex", "main_cite.tex"):
+            (dst / f).unlink()
         (dst / "main_def.tex").unlink(); (dst / "main_hid.tex").unlink()
 
         print("[5] body_diff flags a dropped macro definition")
         broken = out.replace("\\newcommand{\\method}{\\textsc{Toy}}\n", "")
         (dst / "main_nomacro.tex").write_text(broken)
-        r = run(PY, S / "body_diff.py", "--src", src / "main.tex", "--dst", dst / "main_nomacro.tex", "--quiet")
+        r = run(PY, S / "body_diff.py", "--src", src / "main.tex", "--dst", dst / "main_nomacro.tex", "--quiet", "--cite-alias", "cite=citep,shortcite=citeyearpar")
         check(r.returncode == 1 and "method" in r.stdout, "missing \\method reported")
         (dst / "main_bad.tex").unlink()
         (dst / "main_nomacro.tex").unlink()
@@ -358,6 +379,14 @@ def main() -> int:
         by2 = {c["rule"]: c["status"] for c in rc["checks"]}
         check(by2.get("no forbidden packages") == "pass" and by2.get("anonymisation state for submission") == "pass" and by2.get("bibliography style left to the style file") == "pass",
               "AAAI: no forbidden packages, [submission] active, no explicit bibliographystyle")
+
+        print("[5e] pdf_check refuses an unreadable PDF")
+        if shutil.which("pdfinfo") and shutil.which("pdftoppm"):
+            (tmp / "bad.pdf").write_text("not a pdf")
+            r = run(PY, S / "pdf_check.py", "--pdf", tmp / "bad.pdf", "--out", tmp / "badpages")
+            check(r.returncode == 2 and "FAILED" in r.stderr, "non-PDF input -> exit 2, acceptance FAILED")
+        else:
+            print("  skip  poppler not installed")
 
         print("[6] make_zip packages an Overleaf-ready archive")
         z = tmp / "out.zip"

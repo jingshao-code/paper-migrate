@@ -14,8 +14,9 @@ summary, and (when the authors have the source PDF) a word-level comparison of t
   It is a *review* aid, not a proof: layout-induced hyphenation and template text produce
   a few spurious differences, which are listed too.
 
-Needs poppler (pdftoppm, pdfinfo, pdftotext).  Exit 0 = rendered; 1 = word differences found
-(review); 2 = usage/IO error or poppler missing.
+Needs poppler (pdftoppm, pdfinfo, pdftotext).  Exit 0 = every page rendered (and, with --src-pdf,
+no number differs); 1 = numbers differ between the two renderings (review before delivering);
+2 = the PDF is unreadable, has no pages, a page failed to render, or poppler is missing.
 """
 from __future__ import annotations
 
@@ -83,8 +84,16 @@ def main() -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     n = pages_of(pdf)
-    subprocess.run(["pdftoppm", "-r", str(args.dpi), "-png", str(pdf), str(out / "page")], check=False)
+    if n <= 0:
+        print(f"pdf_check: {pdf} is not a readable PDF (pdfinfo reports no pages) -- acceptance FAILED", file=sys.stderr)
+        return 2
+    for old_img in out.glob("page-*.png"):
+        old_img.unlink()                                             # only images from THIS run count
+    rc = subprocess.run(["pdftoppm", "-r", str(args.dpi), "-png", str(pdf), str(out / "page")], check=False).returncode
     images = sorted(out.glob("page-*.png"))
+    if rc != 0 or len(images) != n:
+        print(f"pdf_check: rendering failed (pdftoppm exit {rc}, {len(images)} image(s) for {n} page(s)) -- acceptance FAILED", file=sys.stderr)
+        return 2
 
     summary = []
     for p in range(1, n + 1):

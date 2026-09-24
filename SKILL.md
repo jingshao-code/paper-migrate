@@ -80,8 +80,10 @@ Restores each graphic's physical size from the two geometries and applies the ta
 
 **5. Check content invariance.**
 ```
-python3 scripts/body_diff.py --src <orig>/main.tex --dst <new>/main.tex --json <report>/body_diff.json
+python3 scripts/body_diff.py --src <orig>/main.tex --dst <new>/main.tex --json <report>/body_diff.json \
+        --cite-alias "<venues.<src>.template.cite_alias as a=b,c=d, e.g. cite=citep,shortcite=citeyearpar for AAAI>"
 ```
+`--cite-alias` tells the checker what the source style made each cite command mean, so `\cite`->`\citep` passes for an AAAI source while a parenthetical citation turning textual at any position fails.
 `content=0` and no `PROBLEMS` -> continue. Any content hunk, changed macro definition, or changed citation-variant meaning is a FAIL: revert it or explain it line by line. `structure` hunks (moved blocks from pairing/wrapping, environment changes) and `REVIEW` lines (citation variants, layout definitions) are read one by one. body_diff sees the LaTeX tokens; it does not see what the target style file itself does to them, which is why steps 6-9 exist.
 
 **6. Sandboxed compile.**
