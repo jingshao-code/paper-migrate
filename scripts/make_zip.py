@@ -5,9 +5,10 @@
                 --venue iclr2027 [--manifest venues.yaml]
 
 * Files land at the zip root (Overleaf detects main.tex there).
-* Build artifacts and OS junk are excluded (.aux .log .bbl .blg .out .fls
-  .fdb_latexmk .synctex.gz .DS_Store __MACOSX .git __pycache__ body_diff.json
-  *_REPORT.md, and the PDF produced from --main).
+* Build artifacts, OS junk and paper-migrate's evidence files are excluded (.aux .log .bbl
+  .blg .out .fls .fdb_latexmk .synctex.gz .DS_Store __MACOSX .git __pycache__, body_diff.json
+  and the other report JSON files, *_REPORT.md, and the PDF produced from --main).  The paper's
+  own data files (.json, .csv, ...) are kept.
 * The project is scanned for \\input/\\include, \\bibliography and
   \\includegraphics references; anything referenced but missing is an error,
   anything present but unreferenced is listed as a warning.
@@ -32,10 +33,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from verify_template import load_manifest  # noqa: E402
 
 EXCLUDE_SUFFIXES = (".aux", ".log", ".bbl", ".blg", ".out", ".fls", ".fdb_latexmk",
-                    ".synctex.gz", ".toc", ".lof", ".lot", ".nav", ".snm", ".vrb",
-                    ".pyc", ".json")
-EXCLUDE_NAMES = {".DS_Store", "Thumbs.db", "body_diff.json", "tectonic.log"}
-EXCLUDE_DIRS = {"__MACOSX", ".git", "__pycache__", ".svn", "build", ".tectonic"}
+                    ".synctex.gz", ".toc", ".lof", ".lot", ".nav", ".snm", ".vrb", ".pyc")
+# paper-migrate's own evidence files; any other .json (data, prompts) belongs to the paper and stays
+EXCLUDE_NAMES = {".DS_Store", "Thumbs.db", "tectonic.log", "body_diff.json", "compliance.json", "layout.json",
+                 "compile.json", "rules.json", "verify.json", "profile.json", "pdf_check.json", "MIGRATION_REPORT.md"}
+EXCLUDE_DIRS = {"__MACOSX", ".git", "__pycache__", ".svn", "build", ".tectonic", "pages"}   # pages/ = pdf_check renders
 GRAPHIC_EXTS = (".pdf", ".png", ".jpg", ".jpeg", ".eps", ".ps", ".tif", ".tiff", ".svg")
 OVERLEAF_MAX_BYTES = 50 * 1024 * 1024
 

@@ -20,9 +20,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from verify_template import load_manifest  # noqa: E402
 
-CITE_AUTHORYEAR = {"cite": "citep", "shortcite": "citep", "newcite": "citet"}
-CITE_TO_NUMERIC = {"citep": "cite", "citet": "cite", "citealp": "cite", "citealt": "cite",
-                   "shortcite": "cite", "citeauthor": "cite", "citeyear": "cite"}
 
 
 def build(src: dict, dst: dict, stage: str, keep_page_breaks: bool, dst_id: str) -> dict:
@@ -42,15 +39,27 @@ def build(src: dict, dst: dict, stage: str, keep_page_breaks: bool, dst_id: str)
                      "layout_figures.py decides per float from the physical width")
 
     # ---- citation commands -------------------------------------------------
+    # Meaning must survive: parenthetical stays parenthetical, textual stays textual,
+    # year-only stays year-only.  Source venues that alias natbib commands (AAAI:
+    # \cite=\citep, \shortcite=\citeyearpar) are unaliased; nothing else is rewritten
+    # while the target has natbib, because natbib renders every variant correctly in both
+    # author-year and numeric mode.  Without natbib, only \citep/\citealp map to \cite and
+    # the textual/year forms are reported as conflicts for the authors.
     s_cite, d_cite = s_tpl.get("citation_style"), d_tpl.get("citation_style")
-    if d_cite == "authoryear":
-        for a, b in CITE_AUTHORYEAR.items():
-            ops.append({"op": "replace_cs", "from": a, "to": b, "why": "natbib author-year target"})
+    s_alias = s_tpl.get("cite_alias") or {}
+    d_natbib = bool(d_tpl.get("natbib_loaded_by_style")) or bool(d_tpl.get("natbib_allowed", True))
+    for a, b in s_alias.items():
+        if a != b:
+            ops.append({"op": "replace_cs", "from": a, "to": b,
+                        "why": f"the source style defines \\{a} as \\{b}; natbib's own \\{a} renders differently"})
+    if d_cite == "numeric" and not d_natbib:
+        for a in ("citep", "citealp"):
+            ops.append({"op": "replace_cs", "from": a, "to": "cite", "why": "numeric target without natbib"})
+        notes.append("CONFLICT to report: \\citet, \\citeauthor, \\citeyear, \\citeyearpar, \\citealt have no plain-\\cite "
+                     "equivalent (\"Published in \\citeyear{x}\" would become \"Published in [3]\"); left unchanged, "
+                     "the authors must add natbib or reword")
     elif d_cite == "numeric":
-        for a, b in CITE_TO_NUMERIC.items():
-            ops.append({"op": "replace_cs", "from": a, "to": b, "why": "numeric citation target"})
-        notes.append("numeric target: sentences written around \\citet{} (\"X et al. show\") keep their words; "
-                     "the rendering changes from author-year to [n]; authors may want to review such sentences")
+        notes.append("numeric target with natbib: \\citep/\\citet/\\citeyear keep their meaning in numbers mode; no rewrite")
     if s_cite and d_cite and s_cite != d_cite:
         notes.append(f"citation style changes {s_cite} -> {d_cite}; the .bib file is untouched")
 

@@ -45,7 +45,7 @@ def main() -> int:
     ap.add_argument("--dst-venue", required=True)
     ap.add_argument("--stage", default="submission")
     ap.add_argument("--manifest", default=str(Path(__file__).resolve().parent.parent / "venues.yaml"))
-    for k in ("verify", "rules", "body_diff", "layout", "compile", "compliance"):
+    for k in ("verify", "rules", "body_diff", "layout", "compile", "compliance", "pdf_check", "zip_compile"):
         ap.add_argument("--" + k.replace("_", "-"))
     ap.add_argument("--deliverable", action="append", default=[])
     ap.add_argument("--preexisting", action="append", default=[], help="pre-existing issue found in the source (repeatable)")
@@ -56,7 +56,7 @@ def main() -> int:
     man = load_manifest(Path(args.manifest))
     sv, dv = man["venues"].get(args.src_venue, {}), man["venues"].get(args.dst_venue, {})
     sname, dname = sv.get("name", args.src_venue), dv.get("name", args.dst_venue)
-    V, R, B, L, C, K = (load(getattr(args, k)) for k in ("verify", "rules", "body_diff", "layout", "compile", "compliance"))
+    V, R, B, L, C, K, PC, ZC = (load(getattr(args, k)) for k in ("verify", "rules", "body_diff", "layout", "compile", "compliance", "pdf_check", "zip_compile"))
     today = dt.date.today().isoformat()
     out: list[str] = []
     P = out.append
@@ -99,6 +99,10 @@ def main() -> int:
         if refused:
             n += 1
             P(f"{n}. **Not wrapped on purpose:** " + "; ".join(f"`{w['label']}` ({w.get('reason', '')})" for w in refused) + ".")
+    if PC and PC.get("text_compare") and (PC["text_compare"]["numbers_only_in_source"] or PC["text_compare"]["numbers_only_in_result"]):
+        n += 1
+        tc = PC["text_compare"]
+        P(f"{n}. **Numbers differ between the source PDF and the result.** only in source: {tc['numbers_only_in_source'][:10]}; only in result: {tc['numbers_only_in_result'][:10]}. Explain each before submitting.")
     if C and C.get("status") == "compiled" and int(C.get("overfull_hbox") or 0) > 0:
         n += 1
         P(f"{n}. **Overfull boxes.** {C['overfull_hbox']} line(s) run into the margin (worst {C.get('worst_overfull_pt')}), see the Compile section for their source lines; usually a display equation or table wider than the column.")
@@ -224,6 +228,23 @@ def main() -> int:
             P(f"{C.get('engine')}: COMPILE FAILED -- see the build log.")
     else:
         P("compile_check: not run (no TeX engine, or skipped). Compile on Overleaf.")
+    P("")
+
+    # ---------------- deliverable checks -----------------------------------------------
+    P("## Deliverable checks")
+    if ZC:
+        P(f"Independent compile of the delivered zip: {ZC.get('status')}, {ZC.get('pages')} pages, references on page {ZC.get('references_page')}, overfull {ZC.get('overfull_hbox')}.")
+    else:
+        P("Independent compile of the delivered zip: not run.")
+    if PC:
+        P(f"Page images: {PC.get('pages')} pages rendered ({len(PC.get('images', []))} files) -- every page was to be looked at; see the `pages/` folder.")
+        tc = PC.get("text_compare")
+        if tc:
+            P(f"Rendered-word comparison with the source PDF ({tc['src_pages']} pages / {tc['src_words']} words vs. {tc['dst_words']} words): "
+              f"numbers only in source {tc['numbers_only_in_source'] or 'none'}; numbers only in result {tc['numbers_only_in_result'] or 'none'}; "
+              f"{len(tc['only_in_source'])} / {len(tc['only_in_result'])} distinct words appear in only one rendering (hyphenation and template text account for the usual few).")
+    else:
+        P("Page rendering / rendered-word comparison: not run.")
     P("")
 
     # ---------------- rule check -------------------------------------------------------

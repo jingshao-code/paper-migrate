@@ -67,6 +67,8 @@ def pdf_facts(pdf: Path) -> dict:
             t = re.sub(r" +", " ", run(["pdftotext", "-f", str(p), "-l", str(p), str(pdf), "-"]))
             if "references_page" not in facts and re.search(r"^\s*\d*\s*r\s?e\s?f\s?e\s?r\s?e\s?n\s?c\s?e\s?s\s*$", t, re.M | re.I):
                 facts["references_page"] = p
+                head = [ln for ln in t.splitlines() if ln.strip() and not re.fullmatch(r"\s*\d+\s*", ln)][:4]
+                facts["references_at_page_top"] = any(re.search(r"r\s?e\s?f\s?e\s?r\s?e\s?n\s?c\s?e\s?s", ln, re.I) for ln in head[:2])
             if "appendix_page" not in facts and re.search(r"^\s*\d*\s*(?:A\s+)?a\s?p\s?p\s?e\s?n\s?d\s?i\s?x", t, re.M | re.I) and p > 1:
                 facts["appendix_page"] = p
     if shutil.which("pdffonts"):
@@ -253,16 +255,21 @@ def main() -> int:
     if facts.get("pages"):
         rp = facts.get("references_page")
         if rp and limit:
+            # the main text ends on the references' page, or on the page before when the
+            # references heading opens a fresh page (e.g. after \\newpage)
+            end_page = rp - 1 if facts.get("references_at_page_top") and rp > 1 else rp
+            where = (f"main text ends on page {end_page}; the references open page {rp}" if end_page != rp
+                     else f"main text ends on page {end_page}, where the references also begin (exact position: verify on Overleaf)")
             try:
                 lim_n = int(limit)
-                if rp > lim_n:
+                if end_page > lim_n:
                     add("main-text page limit", "author action",
-                        f"main text runs into page {rp} (the references start on that page); limit {lim_n} -> up to {rp - lim_n} page(s) over. "
-                        f"Nothing was cut; shortening is the authors' decision", lim.get("source", ""))
-                elif rp == lim_n:
-                    add("main-text page limit", "info", f"main text ends on page {rp} = limit {lim_n}; check the exact end on Overleaf", lim.get("source", ""))
+                        f"{where}; limit {lim_n} -> up to {end_page - lim_n} page(s) over. Nothing was cut; shortening is the authors' decision",
+                        lim.get("source", ""))
+                elif end_page == lim_n:
+                    add("main-text page limit", "info", f"{where}; equals the limit {lim_n}; check the exact end on Overleaf", lim.get("source", ""))
                 else:
-                    add("main-text page limit", "info", f"main text ends on page {rp}; limit {lim_n}", lim.get("source", ""))
+                    add("main-text page limit", "info", f"{where}; limit {lim_n}", lim.get("source", ""))
             except (TypeError, ValueError):
                 add("main-text page limit", "info", f"main text ends on page {rp}; limit recorded as {limit!r}", lim.get("source", ""))
         else:

@@ -1,31 +1,49 @@
 #!/usr/bin/env bash
-# compile_check.sh -- compile a project in a throwaway copy with shell-escape OFF
-# and report page facts the venue rules care about.
+# compile_check.sh -- compile a project (or a delivered .zip) in a throwaway copy and
+# report page facts the venue rules care about.
 #
-#   compile_check.sh <project_dir> <main.tex> [out_dir]
+#   compile_check.sh <project_dir | project.zip> <main.tex> [out_dir]
 #
-# Engine: tectonic (--untrusted) if present, else latexmk/pdflatex with
-# shell_escape=f and openout_any=p.  Nothing is written into <project_dir>.
-# With [out_dir] the PDF and log are copied there.  Exit 0 = compiled,
-# 1 = compile failed, 3 = no engine available.
+# Engine: tectonic (--untrusted) if present, else latexmk -norc / pdflatex with
+# shell_escape=f and openout_any=p.  A CPU limit (ulimit -t 1500) applies.  Nothing is written
+# into the source.  PAPER_MIGRATE_OFFLINE=1 makes tectonic use only cached packages.
+#
+# This is a hardened build, NOT a security sandbox: TeX still reads the project files and
+# tectonic may download packages on first use.  Compile untrusted templates on Overleaf.
+# Exit 0 = compiled, 1 = compile failed, 3 = no engine available.
 set -u
-proj="${1:?project dir}"; main="${2:?main .tex}"; outdir="${3:-}"
+proj="${1:?project dir or zip}"; main="${2:?main .tex}"; outdir="${3:-}"
+zipsrc=""
+if [ -f "$proj" ] && [[ "$proj" == *.zip ]]; then
+  zipsrc="$proj"
+  proj="$(mktemp -d "${TMPDIR:-/tmp}/paper-migrate-zip.XXXXXX")"
+  python3 - "$zipsrc" "$proj" "$(dirname "$0")" <<'PYEOF' || { echo "compile_check: refused to extract $zipsrc" >&2; exit 2; }
+import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[3])
+from verify_template import guarded_extract
+guarded_extract(Path(sys.argv[1]), Path(sys.argv[2]), None)
+PYEOF
+  echo "extracted       $zipsrc -> temporary copy (independent compile of the delivered zip)"
+fi
 [ -d "$proj" ] || { echo "compile_check: no such dir $proj" >&2; exit 2; }
 [ -f "$proj/$main" ] || { echo "compile_check: no $main in $proj" >&2; exit 2; }
 base="${main%.tex}"
 work="$(mktemp -d "${TMPDIR:-/tmp}/paper-migrate-build.XXXXXX")"
-trap 'rm -rf "$work"' EXIT
+trap 'rm -rf "$work"; [ -n "$zipsrc" ] && rm -rf "$proj"' EXIT
 cp -R "$proj/." "$work/"
 cd "$work" || exit 2
 
 engine=""; status=1
+ulimit -t 1500 2>/dev/null || true          # CPU seconds for the whole build
+offline=""; [ "${PAPER_MIGRATE_OFFLINE:-0}" = "1" ] && offline="--only-cached"
 if command -v tectonic >/dev/null 2>&1; then
-  engine="tectonic $(tectonic --version | awk '{print $2}') (XeTeX; shell-escape off)"
-  tectonic --untrusted --keep-logs "$main" >build.stdout 2>&1; status=$?
+  engine="tectonic $(tectonic --version | awk '{print $2}') (XeTeX; shell-escape off${offline:+, offline})"
+  tectonic --untrusted $offline --keep-logs "$main" >build.stdout 2>&1; status=$?
   log="$base.log"; [ -f "$log" ] || log=build.stdout
 elif command -v latexmk >/dev/null 2>&1; then
-  engine="latexmk/pdflatex (shell_escape=f)"
-  shell_escape=f openout_any=p latexmk -pdf -interaction=nonstopmode -halt-on-error "$main" >build.stdout 2>&1; status=$?
+  engine="latexmk -norc / pdflatex (shell_escape=f)"
+  shell_escape=f openout_any=p latexmk -norc -pdf -interaction=nonstopmode -halt-on-error "$main" >build.stdout 2>&1; status=$?
   log="$base.log"
 elif command -v pdflatex >/dev/null 2>&1; then
   engine="pdflatex x3 + bibtex (shell_escape=f)"

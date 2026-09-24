@@ -268,6 +268,7 @@ venues:
       mandatory_preamble: ['\usepackage[hyphens]{url}', '\usepackage{graphicx}', '\urlstyle{rm}', '\def\UrlFont{\rm}', '\usepackage{natbib}', '\usepackage{caption}', '\frenchspacing', '\pdfinfo{']
       bibliographystyle: set by the style file (aaai2027.bst)
       citation_style: authoryear
+      cite_alias: {cite: citep, shortcite: citeyearpar}   # aaai2027.sty: \let\cite\citep  \let\shortcite\citeyearpar
       style_loads: [newtxtext, helvet, courier, fontenc, xcolor, placeins, iftex]
       natbib_loaded_by_style: false
       section_numbering: unnumbered

@@ -82,10 +82,10 @@ FORMAT_0 = {
 FORMAT_N = {
     "vspace": 1, "vspace*": 1, "hspace": 1, "hspace*": 1, "setlength": 2,
     "addtolength": 2, "setcounter": 2, "addtocounter": 2, "bibliographystyle": 1,
-    "setcitestyle": 1, "phantom": 1, "hphantom": 1, "vphantom": 1, "rule": 2,
+    "setcitestyle": 1, "rule": 2,
     "cmidrule": 1, "cline": 1, "specialrule": 3, "addlinespace": 0,
     "captionsetup": 1, "thispagestyle": 1, "pagestyle": 1, "definecolor": 3,
-    "color": 1, "rowcolor": 1, "cellcolor": 1, "arrayrulecolor": 1,
+    "rowcolor": 1, "cellcolor": 1, "arrayrulecolor": 1,
     "columncolor": 1, "linespread": 1, "fontsize": 2, "graphicspath": 1,
     "floatname": 2, "floatstyle": 1, "restylefloat": 1, "hyphenation": 1,
     "enlargethispage": 1, "pdfinfo": 1, "extrarowheight": 0, "afterpage": 1,
@@ -95,15 +95,16 @@ FORMAT_N = {
 
 # Layout wrappers: consume N args, then treat the following {group} braces as
 # layout (the group's contents are still diffed as content).
+# NOT whitelisted on purpose (they change what the reader sees): \\textcolor, \\color, \\phantom,
+# \\uppercase/\\lowercase/\\MakeUppercase/\\MakeLowercase.  They are ordinary content macros.
 WRAPPERS = {
     "resizebox": 2, "resizebox*": 2, "scalebox": 1, "rotatebox": 1,
-    "textcolor": 1, "parbox": 1, "makebox": 0, "mbox": 0, "hbox": 0,
+    "parbox": 1, "makebox": 0, "mbox": 0, "hbox": 0,
     "vbox": 0, "raisebox": 1, "adjustbox": 1, "colorbox": 1, "fcolorbox": 2,
     "framebox": 0, "fbox": 0, "reflectbox": 0, "smash": 0, "clap": 0,
     "rlap": 0, "llap": 0, "mathclap": 0, "mathrlap": 0, "mathllap": 0,
     "textnormal": 0, "textrm": 0, "textsf": 0, "textup": 0, "textmd": 0,
-    "textsl": 0, "textsc": 0, "uppercase": 0, "lowercase": 0, "MakeUppercase": 0,
-    "MakeLowercase": 0, "ensuremath": 0, "noindent": 0,
+    "textsl": 0, "textsc": 0, "ensuremath": 0, "noindent": 0,
 }
 
 # \renewcommand{\X}{..} / \newcommand{\X}{..} in the body is layout only when X
@@ -949,6 +950,61 @@ def preamble_defs(pre: str) -> tuple[set[str], set[str], set[str]]:
     return macros, envs, cols
 
 
+DEF_HEAD_RE = re.compile(r"\\(newcommand|renewcommand|providecommand|DeclareRobustCommand|DeclareMathOperator|newtheorem|newcolumntype|newenvironment|renewenvironment|def)\*?")
+
+
+def macro_bodies(pre: str) -> dict[str, str]:
+    """name -> normalised definition text for every macro/theorem/column type defined in a preamble."""
+    out: dict[str, str] = {}
+    for m in DEF_HEAD_RE.finditer(pre):
+        kind = m.group(1)
+        i = m.end()
+        if kind == "def":
+            mm = re.match(r"\s*\\([A-Za-z@]+)([^{]*)", pre[i:])
+            if not mm:
+                continue
+            name, params = "\\" + mm.group(1), mm.group(2)
+            i += mm.end()
+            g = find_matching_brace(pre, i) if i < len(pre) and pre[i] == "{" else -1
+            if g < 0:
+                continue
+            out[name] = re.sub(r"\s+", " ", params.strip() + " " + pre[i + 1:g]).strip()
+            continue
+        # {\name} or \name  (newtheorem/newcolumntype/newenvironment take a plain {name})
+        mm = re.match(r"\s*(\{\s*\\?([A-Za-z@*]+)\s*\}|\\([A-Za-z@]+))", pre[i:])
+        if not mm:
+            continue
+        name = mm.group(2) or mm.group(3)
+        if kind in ("newcommand", "renewcommand", "providecommand", "DeclareRobustCommand", "DeclareMathOperator"):
+            name = "\\" + name
+        i += mm.end()
+        parts = []
+        # optional arguments [..][..] then one or two mandatory bodies
+        while True:
+            j = i
+            while j < len(pre) and pre[j] in " \t\n":
+                j += 1
+            if j < len(pre) and pre[j] == "[":
+                k = pre.find("]", j)
+                if k < 0:
+                    break
+                parts.append(pre[j:k + 1])
+                i = k + 1
+                continue
+            if j < len(pre) and pre[j] == "{":
+                g = find_matching_brace(pre, j)
+                if g < 0:
+                    break
+                parts.append(pre[j:g + 1])
+                i = g + 1
+                if kind in ("newenvironment", "renewenvironment") and sum(1 for x in parts if x.startswith("{")) < 2:
+                    continue
+                break
+            break
+        out[f"{kind}:{name}"] = re.sub(r"\s+", " ", "".join(parts)).strip()
+    return out
+
+
 def preamble_packages(pre: str) -> set[str]:
     out = set()
     for _opt, names in PKG_PATTERN.findall(pre):
@@ -1083,6 +1139,9 @@ def main() -> int:
     report["format_changes"] = dict(sorted(fmt_stats.items(), key=lambda kv: -kv[1]))
     report["starred_floats"] = {"src": sa.star_floats, "dst": sb.star_floats}
     report["cite_variants"] = {"src": sa.cite_variants, "dst": sb.cite_variants}
+    if sa.cite_variants != sb.cite_variants:
+        reviews.append(f"citation command variants changed {sa.cite_variants} -> {sb.cite_variants}: "
+                       "parenthetical / textual / year-only forms must map to their equivalents (see make_rules notes)")
 
     # ---- title ------------------------------------------------------------ #
     st, dt = extract_macro_arg(src_pre, "title"), extract_macro_arg(dst_pre, "title")
@@ -1116,9 +1175,25 @@ def main() -> int:
     collisions = {f: sorted(defs & (preamble_defs(dst_pre)[0] | preamble_defs(dst_pre)[1]))
                   for f, defs in input_defs.items()}
     collisions = {f: c for f, c in collisions.items() if c}
+    # definitions must be identical too: a changed \\newcommand body changes the rendered paper
+    src_bodies, dst_bodies = macro_bodies(src_pre), macro_bodies(dst_pre)
+    changed_defs, layout_defs = [], []
+    for key, body in src_bodies.items():
+        if key in dst_bodies and dst_bodies[key] != body:
+            kind, _, name = key.partition(":")
+            plain = name.lstrip("\\")
+            if kind == "newcolumntype" or plain in FORMAT_TARGETS:
+                layout_defs.append(f"{name}: {body[:40]!r} -> {dst_bodies[key][:40]!r}")
+            else:
+                changed_defs.append(f"{name}: {body[:60]!r} -> {dst_bodies[key][:60]!r}")
     checks["macros"] = {"src_defined": len(sm | se), "missing_used_in_dst": missing_macros + missing_envs,
                         "collisions_with_inputs": collisions,
-                        "columntypes_missing": sorted(sc - dc)}
+                        "columntypes_missing": sorted(sc - dc),
+                        "definitions_changed": changed_defs, "layout_definitions_changed": layout_defs}
+    if changed_defs:
+        problems.append(f"macro definitions changed (rendered text would differ): {changed_defs}")
+    if layout_defs:
+        reviews.append(f"layout-only definitions changed: {layout_defs}")
     if missing_macros or missing_envs:
         problems.append(f"macros/environments used by migrated body but no longer defined: "
                         f"{missing_macros + missing_envs}")
@@ -1229,7 +1304,7 @@ def main() -> int:
     P(f"authors    {len(words)} words / {len(emails)} emails from source; missing in dst: "
       f"{missing_words + missing_emails or 'none'}")
     P(f"macros     missing-but-used: {missing_macros + missing_envs or 'none'}; "
-      f"collisions: {collisions or 'none'}")
+      f"collisions: {collisions or 'none'}; definitions changed: {changed_defs or 'none'}")
     P(f"packages   dropped={sorted(sp - dp) or 'none'}  added={sorted(dp - sp) or 'none'}")
     P(f"citations  keys {len(ck_s)}->{len(ck_d)}  uses {len(sa.cite_keys)}->{len(sb.cite_keys)}  "
       f"missing={sorted(ck_s - ck_d) or 'none'} added={sorted(ck_d - ck_s) or 'none'}")

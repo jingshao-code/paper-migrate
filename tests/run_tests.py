@@ -58,7 +58,8 @@ def main() -> int:
         rj = json.loads(rules.read_text()) if rules.exists() else {"ops": []}
         kinds = [(o["op"], o.get("from", o.get("name", o.get("marker", "")))) for o in rj["ops"]]
         check(r.returncode == 0 and ("rename_env", "figure*") in kinds, "two-column -> one-column: starred floats renamed")
-        check(("replace_cs", "cite") in kinds and ("replace_cs", "shortcite") in kinds, "author-year target: \\cite/\\shortcite -> \\citep")
+        check(("replace_cs", "cite") in kinds and any(o["op"] == "replace_cs" and o["from"] == "shortcite" and o["to"] == "citeyearpar" for o in rj["ops"]),
+              "AAAI aliases unaliased: \\cite -> \\citep, \\shortcite -> \\citeyearpar (year-only stays year-only)")
         check(("ensure_bibliographystyle", "iclr2027_conference") in kinds, "explicit bibliographystyle for ICLR")
         check(any(o["op"] == "insert_before" and "AI use statement" in o.get("text", "") for o in rj["ops"]), "required-section TODO comment op")
         r2 = run(PY, S / "make_rules.py", "--src-venue", "iclr2027", "--dst-venue", "aaai2027", "--out", tmp / "rules_back.json")
@@ -246,8 +247,9 @@ def main() -> int:
         check(not j["checks"]["authors"]["missing_words"] and not j["checks"]["authors"]["missing_emails"],
               "author words and e-mails present in new preamble")
         check(not j["checks"]["citations"]["missing"], "citation keys preserved")
-        check(j["cite_variants"]["src"].get("cite") == 1 and j["cite_variants"]["dst"].get("citep") == 2,
-              "cite command variants reported")
+        check(j["cite_variants"]["src"].get("cite") == 1 and j["cite_variants"]["dst"].get("citep") == 1 and j["cite_variants"]["dst"].get("citeyearpar") == 1,
+              "cite command variants reported (\\cite->\\citep, \\shortcite->\\citeyearpar)")
+        check(any("citation command variants changed" in r for r in j["reviews"]), "variant change listed for review")
         check(all(row.get("equal") for row in j["checks"]["figure_files"]), "figure files hash-equal")
         check(all(row.get("equal") for row in j["checks"]["bib_files"]), "bib file hash-equal")
 
@@ -266,6 +268,17 @@ def main() -> int:
         check(j2["checks"]["citations"]["missing"] == ["smith2020"], "missing citation key named")
         joined = " ".join(h["removed"] + " " + h["added"] for h in j2["hunk_details"]["content"])
         check("41.3" in joined and "vs." in joined and "add a sentence" in joined, "hunks show the edited tokens")
+
+        print("[4b] body_diff catches a changed macro definition and hidden/recased text")
+        chg = out.replace("\\newcommand{\\method}{\\textsc{Toy}}", "\\newcommand{\\method}{\\textsc{Other}}", 1)
+        (dst / "main_def.tex").write_text(chg)
+        r = run(PY, S / "body_diff.py", "--src", src / "main.tex", "--dst", dst / "main_def.tex", "--quiet")
+        check(r.returncode == 1 and "definitions changed" in r.stdout and "method" in r.stdout, "changed \\newcommand body -> FAIL")
+        hid = out.replace("We conclude.", "\\textcolor{white}{We conclude.}", 1)
+        (dst / "main_hid.tex").write_text(hid)
+        r = run(PY, S / "body_diff.py", "--src", src / "main.tex", "--dst", dst / "main_hid.tex", "--quiet")
+        check(r.returncode == 1, "text wrapped in \\textcolor{white} -> content hunk (not whitelisted)")
+        (dst / "main_def.tex").unlink(); (dst / "main_hid.tex").unlink()
 
         print("[5] body_diff flags a dropped macro definition")
         broken = out.replace("\\newcommand{\\method}{\\textsc{Toy}}\n", "")
@@ -349,6 +362,13 @@ def main() -> int:
             names = set(zf.namelist())
         check({"main.tex", "refs.bib", "figures/plot.png", "iclr2027_conference.sty"} <= names, "main, bib, figure, sty at root")
         check(Path(str(z) + ".sha256.txt").exists(), "hash sidecar written")
+        (dst / "prompts.json").write_text('{"system": "toy"}\n')
+        (dst / "body_diff.json").write_text("{}\n")
+        r = run(PY, S / "make_zip.py", "--project", dst, "--main", "main.tex", "--out", tmp / "out3.zip", "--venue", "iclr2027")
+        with zipfile.ZipFile(tmp / "out3.zip") as zf:
+            n3 = set(zf.namelist())
+        check("prompts.json" in n3 and "body_diff.json" not in n3, "paper data .json kept, evidence .json excluded")
+        (dst / "prompts.json").unlink(); (dst / "body_diff.json").unlink()
         (dst / "aaai2027.sty").write_text("% foreign\n")
         r = run(PY, S / "make_zip.py", "--project", dst, "--main", "main.tex", "--out", tmp / "out2.zip", "--venue", "iclr2027")
         check(r.returncode == 1 and "foreign template file" in r.stdout, "refuses to ship another venue's .sty")
