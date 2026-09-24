@@ -53,7 +53,7 @@ In the output folder:
 
 | File | What it is |
 |---|---|
-| `MIGRATION_REPORT.md` | **Start here.** Author to-do on top, evidence below. It is inside the zip too, and the to-do list is repeated as a comment block at the top of `main.tex`, so you see it first on Overleaf. |
+| `MIGRATION_REPORT.md` | **Start here.** Author to-do on top, evidence below. It is inside the zip too, so it shows in the Overleaf file tree; `main.tex` itself only carries `% TODO(...)` marks where a required section must be written. |
 | `<paper>_<venue>.zip` | Upload at overleaf.com → New Project → Upload Project; compile with pdfLaTeX. |
 | `main.tex`, `figures/`, `.bib`, style files | The migrated project (same files as the zip). |
 | `main.pdf` | Local test compile, if a TeX engine was available. |

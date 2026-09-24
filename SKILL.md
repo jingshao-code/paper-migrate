@@ -109,10 +109,10 @@ python3 scripts/make_report.py --paper <name> --src-venue <src> --dst-venue <dst
         --layout <report>/layout.json --suggest <report>/suggest.json --compile <report>/build/compile.json \
         --compliance <report>/compliance.json --pdf-check <report>/pdf_check.json \
         --deliverable <name>.zip --deliverable <new>/ [--preexisting "..."] \
-        --out <new>/MIGRATION_REPORT.md --todo-into <new>/main.tex
+        --out <new>/MIGRATION_REPORT.md
 python3 scripts/make_zip.py --project <new> --main main.tex --out <name>.zip --venue <dst>
 ```
-`--todo-into` writes the Author to-do list as a comment block at the very top of `main.tex`, so it is the first thing the authors see when they open the project on Overleaf; `MIGRATION_REPORT.md` is packaged into the zip for the details. Both are comments/text only and change nothing in the paper (body_diff ignores comments).
+`MIGRATION_REPORT.md` is written before packaging so it travels inside the zip: on Overleaf the authors open it from the file tree. The only marks inside `main.tex` are the `% TODO(<venue>, REQUIRED)` comments at the places where a required section must be written.
 After packaging, the acceptance check on the deliverable itself:
 ```
 scripts/compile_check.sh <name>.zip main.tex <report>/zipbuild                 # the zip compiles on its own -> zip_compile.json beside the zip

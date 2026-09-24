@@ -357,20 +357,6 @@ def main() -> int:
         check(r.returncode == 0 and md.startswith("# Migration report: Toy, AAAI-27 -> ICLR 2027"), "report written with title")
         check("## Author to-do" in md and "AI use statement" in md.split("## Template")[0], "author to-do lists the missing required section first")
         check("compile_check: not run" in md and "## Rule check against ICLR 2027" in md, "missing inputs reported as not run; rule table present")
-        (dst / "todo_target.tex").write_text((dst / "main.tex").read_text())
-        r = run(PY, S / "make_report.py", "--paper", "Toy", "--src-venue", "aaai2027", "--dst-venue", "iclr2027", "--stage", "submission",
-                "--rules", rules, "--body-diff", rep, "--layout", lay, "--compliance", comp, "--deliverable", "toy.zip", "--out", rep_md,
-                "--todo-into", dst / "todo_target.tex")
-        tt_ = (dst / "todo_target.tex").read_text()
-        check(r.returncode == 0 and tt_.startswith("% ==== paper-migrate: AUTHOR TO-DO (start) ====") and "AI use statement" in tt_.split("(end) ====")[0],
-              "to-do block written at the top of main.tex")
-        run(PY, S / "make_report.py", "--paper", "Toy", "--src-venue", "aaai2027", "--dst-venue", "iclr2027", "--stage", "submission",
-            "--rules", rules, "--body-diff", rep, "--layout", lay, "--compliance", comp, "--deliverable", "toy.zip", "--out", rep_md,
-            "--todo-into", dst / "todo_target.tex")
-        check((dst / "todo_target.tex").read_text().count("AUTHOR TO-DO (start)") == 1, "re-running replaces the block instead of stacking")
-        r = run(PY, S / "body_diff.py", "--src", src / "main.tex", "--dst", dst / "todo_target.tex", "--quiet", "--cite-alias", "cite=citep,shortcite=citeyearpar")
-        check(r.returncode == 0, "the comment block changes nothing for body_diff")
-        (dst / "todo_target.tex").unlink()
 
         print("[5d] reverse direction: the migrated ICLR sample -> AAAI-27 (two-column target)")
         rev = tmp / "rev"
