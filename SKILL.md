@@ -1,6 +1,6 @@
 ---
 name: paper-migrate
-description: "Move a complete LaTeX paper from one AI-conference template to another (AAAI, ICLR, NeurIPS, ACL, ... any venue registered in venues.yaml) changing only formatting, never content, and prove it with body_diff. Reads the target template's own requirements first, converts, re-checks the result against the target's rules, and delivers an Overleaf-ready zip plus a short report that tells the authors what only they can decide (page count, required statements). Not for polishing, shortening, writing statements, or submitting."
+description: "Move a LaTeX paper from one AI-conference template to another (AAAI, ICLR, NeurIPS, ICML, ACL, NAACL ... any venue whose official template is supplied) changing only formatting, never content. Reads the target template's rules first, converts, proves content invariance with body_diff, re-checks compliance against the target, and delivers an Overleaf-ready zip plus a short report of what only the authors can decide (page limit, required statements). Not for polishing, shortening, writing statements, or submitting."
 ---
 
 # paper-migrate: format-only conference template migration

@@ -1,145 +1,133 @@
 # paper-migrate
 
-An agent skill that moves a complete LaTeX paper from one AI-conference template to another
-(ICLR, NeurIPS, ACL and AAAI are registered; any venue can be added) **without changing a word
-of the paper**, and proves it. It reads the target template's own requirements first, converts,
-re-checks the result against those requirements, and hands the authors a short report of what
-only they can decide.
+Move a LaTeX paper from one AI-conference template to another — AAAI → ICLR, NeurIPS → ICML,
+ACL → NAACL, any venue whose official template you have — **changing only the format, never a
+word of the paper**. The result is an Overleaf-ready zip and a one-page report that tells you
+what only you can decide (page limit, required statements, anything to eyeball).
 
-The output is an Overleaf-ready zip plus a compliance report. Upload the zip, press *Recompile*,
-download the PDF.
-
-## What it changes and what it never touches
-
-| Changes (format only) | Never changes |
-|---|---|
-| document class, style file, required packages | title, abstract, body text, captions |
-| column count, margins, fonts (template-controlled) | numbers, tables, formulas, algorithms |
-| float placement, `figure*`->`figure`, physical-size-preserving widths, side-by-side pairing with (a)/(b) sub-captions, text-wrapped small floats | figures themselves and every caption's words (byte-identical / token-identical) |
-| citation *command* variants (`\cite`->`\citep`), `\bibliographystyle` | citation *keys*, the `.bib` file |
-| author block structure, `\iclrfinalcopy` toggle | section order, moving text between body and appendix |
-| compile errors *introduced by the migration* | pre-existing typos or suspected mistakes (reported, not fixed) |
-
-The page count is whatever a format-only conversion produces; over or under the new limit is
-reported to the authors, never "fixed". If the target venue requires a new statement (ICLR's
-*AI use statement*) a `% TODO` comment is inserted where it belongs and the authors write it.
-Nothing is invented. The report opens with an author to-do list.
-
-## How it works
-
-```
-profile_template.py  read the target package: geometry, style line, anonymisation options, quoted rules
-verify_template.py   hash-check the official template against venues.yaml (guarded unzip)
-make_rules.py        derive the body rewrites for the venue pair from venues.yaml
-draft_preamble.py    build the target preamble from the source preamble + registry
-migrate_tex.py       apply the rules; replace the preamble
-layout_figures.py    physical-size-preserving widths; pair / wrap small floats; caption position
-body_diff.py         token diff with a layout whitelist -> RESULT: PASS / FAIL
-compile_check.sh     sandboxed compile (shell-escape off): pages, where references start
-check_compliance.py  re-check the result against the target venue's recorded rules
-make_zip.py          Overleaf-ready zip + SHA-256 sidecar; refuses foreign template files
-make_report.py       MIGRATION_REPORT.md, author to-do first
-```
-
-`venues.yaml` is the registry: per venue the official URLs, SHA-256 of every template file,
-page geometry, style line, citation style, anonymisation mechanism, and every rule with the
-sentence it was read from and a `verified_on` date. Four venues ship today (ICLR 2027,
-NeurIPS 2026, ACL/ARR 2026 style, AAAI-27); `references/venue-checklist.md` explains how to add
-one in about twenty minutes, starting from `profile_template.py --yaml`.
-
-`body_diff.py` is the acceptance test. It normalises layout-only constructs (float stars,
-widths, spacing, font sizes, page breaks, `\resizebox`, citation command names, ...) and fails
-on anything else: words, numbers, math, citation keys, labels, headings, lost macro
-definitions, changed `.bib` or figure files, title, author text. A block that merely moved
-(e.g. two figures paired) is reported as a structure change to review, not as content.
-
-## Install
-
-The skill is a folder with a `SKILL.md`; any agent that reads that format can use it.
-
-```bash
-# Claude Code
-git clone https://github.com/<you>/paper-migrate ~/.claude/skills/paper-migrate
-# other SKILL.md-compatible agents: clone into their skills directory
-```
-
-Requirements: Python 3.10+ (standard library only; PyYAML optional). For local compile checks,
-`tectonic` **or** TeX Live (`latexmk`/`pdflatex`) plus poppler (`pdfinfo`, `pdftotext`).
-Without a TeX engine everything except the compile step still works; Overleaf compiles the zip.
+Works with any venue. Four are pre-registered with their rules (ICLR 2027, NeurIPS 2026, ACL/ARR,
+AAAI-27); for any other, point the skill at the official template package and it reads the rules
+from the package first, asks you to confirm what it could not read, then converts.
 
 ## Use
 
-Download the **official** template for the target venue (URL in `venues.yaml`; a bundled copy
-may exist under `assets/templates/`), then ask the agent:
-
-> Use paper-migrate. Source: `~/Desktop/MyPaper_AAAI27/` (main.tex). Target: ICLR 2027,
-> initial submission, official template at `~/Desktop/iclr2027/`. Put the zip on the Desktop.
-
-The agent follows `SKILL.md` step by step and hands back the zip, the JSON evidence
-(`body_diff.json`, `layout.json`, `compliance.json`, `compile.json`), a locally compiled PDF when
-an engine exists, and `MIGRATION_REPORT.md`, which opens with the author to-do list (page count
-vs. limit, missing required sections, layout to eyeball) and then lists every venue rule as
-pass / FAIL / author action / info.
-
-Manual use (AAAI-27 -> ICLR 2027 shown; swap the venue ids for any registered pair):
+Install the skill (a folder with a `SKILL.md`; works with Claude Code and other agents that read
+that format):
 
 ```bash
-python3 scripts/profile_template.py --dir ~/Desktop/iclr2027 --venue-id iclr2027 --yaml
-python3 scripts/verify_template.py  --venue iclr2027 --dir ~/Desktop/iclr2027 --json rep/verify.json
-python3 scripts/make_rules.py       --src-venue aaai2027 --dst-venue iclr2027 --out rep/rules.json
-python3 scripts/draft_preamble.py   --src orig/main.tex --src-venue aaai2027 --dst-venue iclr2027 --out rep/preamble.tex
-python3 scripts/migrate_tex.py      --in orig/main.tex --out new/main.tex --rules rep/rules.json --preamble rep/preamble.tex
-python3 scripts/layout_figures.py   --src orig/main.tex --in new/main.tex --out new/main.tex --force \
-        --src-venue aaai2027 --dst-venue iclr2027 --table-captions above --pair fig:a,fig:b --wrap fig:c --report rep/layout.json
-python3 scripts/body_diff.py        --src orig/main.tex --dst new/main.tex --json rep/body_diff.json
-scripts/compile_check.sh new main.tex rep/build
-python3 scripts/check_compliance.py --venue iclr2027 --project new --stage submission --src orig/main.tex \
-        --pdf rep/build/main.pdf --json rep/compliance.json
-python3 scripts/make_zip.py         --project new --main main.tex --out paper_iclr2027.zip --venue iclr2027
-python3 scripts/make_report.py      --paper Paper --src-venue aaai2027 --dst-venue iclr2027 --verify rep/verify.json \
-        --rules rep/rules.json --body-diff rep/body_diff.json --layout rep/layout.json --compile rep/build/compile.json \
-        --compliance rep/compliance.json --deliverable paper_iclr2027.zip --out new/MIGRATION_REPORT.md
-python3 tests/run_tests.py
+git clone https://github.com/jingshao-code/paper-migrate ~/.claude/skills/paper-migrate
 ```
+
+Download the **official** template of the target venue (its author page; not the Overleaf
+gallery), then tell the agent:
+
+> Use paper-migrate. Source: `~/papers/MyPaper_AAAI27/` (main.tex). Target: ICLR 2027,
+> submission, official template at `~/Downloads/iclr2027/`. Output to `~/papers/MyPaper_ICLR27/`.
+
+Requirements: Python 3.10+, nothing else for the conversion itself. Optional: `tectonic` or TeX Live
+for a local test compile and poppler (`pdfinfo`, `pdftotext`) for page facts; without them the
+zip is still produced and Overleaf compiles it.
+
+## What happens
+
+1. **Read the target first** — geometry, style line, anonymisation switch, caption rule, page limit,
+   required sections, all quoted from the official package (`venues.yaml` records them with sources).
+2. **Verify** the template files against the recorded SHA-256.
+3. **Convert mechanically** — document class, style line, author block, citation commands,
+   bibliography style; figure and table widths recomputed from the two venues' geometry so a
+   two-column figure keeps its physical size; small floats paired with (a)/(b) sub-captions or
+   wrapped with text when the paragraph is long enough; caption position per the venue rule.
+4. **Prove nothing changed** — `body_diff` compares every word, number, formula, citation key,
+   label, heading and file hash; any content difference fails the run.
+5. **Compile** in a sandbox (shell-escape off) and **re-check** the result against the target's
+   rules (style file, anonymity state, forbidden packages, captions, paper size, ...).
+6. **Deliver** the zip and the report.
+
+## Where to look
+
+In the output folder:
+
+| File | What it is |
+|---|---|
+| `MIGRATION_REPORT.md` | **Start here.** Author to-do on top, evidence below. |
+| `<paper>_<venue>.zip` | Upload at overleaf.com → New Project → Upload Project; compile with pdfLaTeX. |
+| `main.tex`, `figures/`, `.bib`, style files | The migrated project (same files as the zip). |
+| `main.pdf` | Local test compile, if a TeX engine was available. |
+| `body_diff.json`, `compliance.json`, `layout.json`, `compile.json` | Machine-readable evidence behind the report. |
+
+## What to check in the report
+
+- **Author to-do** — the tool never does these for you:
+  - *Page limit*: a format-only migration lands wherever it lands ("main text ends on page 10,
+    limit 9"). Shortening or extending is your decision.
+  - *Required sections* the target has and the source lacks (ICLR's AI use statement, NeurIPS's
+    checklist, ACL's Limitations): a `% TODO(<venue>, REQUIRED)` comment marks the place; you write it.
+  - *Layout to eyeball*: which floats were paired, wrapped, enlarged or scaled, all reversible.
+  - *Floats vs. first mention*: floats that print before the paragraph that first cites them
+    (usually LaTeX's top-of-page placement of a block written before the paragraph).
+  - *Identity hints* in the body (institutions, URLs, acknowledgements) for anonymous submission.
+- **Content invariance** must read `RESULT: PASS` with `content 0`. Structure hunks are the
+  pairings and wraps, listed one by one.
+- **Rule check**: every rule marked `pass`, `author action`, `info` or `n/a`. A `FAIL` means the
+  migration itself is not finished.
+- Then open the PDF on Overleaf and read it once; the report tells you which pages changed layout.
 
 ## Adding a venue
 
-1. Download the official package; run `python3 scripts/profile_template.py --dir <it> --venue-id <id> --yaml`.
-2. Paste the printed skeleton into `venues.yaml` and replace every `TODO_CONFIRM` **with the
-   sentence you read** on the venue's author page (page limit and what does not count, required
-   sections, captions, anonymity), plus `verified_on`. `references/venue-checklist.md` maps each
-   field to its source.
-3. Optionally drop the official zip into `assets/templates/<id>/` if its publisher allows
-   redistribution (see `assets/README.md`).
-4. No per-pair rule file is needed: `make_rules.py` derives the rewrites from the two entries.
-   A `references/<src>-to-<dst>.json` override exists only for oddities.
+`python3 scripts/profile_template.py --dir <official package> --venue-id icml2027 --yaml` prints a
+`venues.yaml` entry with everything the package states and `TODO_CONFIRM` for the rest. Fill the
+TODOs from the venue's author page (quote the sentence, add `verified_on`), and the venue is
+available in both directions. `references/venue-checklist.md` says where each field comes from.
+Bundle the official zip under `assets/templates/` only if its publisher allows redistribution.
 
-## Security model
+<details>
+<summary>Manual use of the scripts</summary>
 
-* The source project is read-only; all writes go to a new directory.
-* No network use except, on explicit request, the pinned `official.template_zip` URL. The
-  manuscript is never sent anywhere.
-* Template zips pass a guard (no absolute paths, `..`, symlinks, oversized members) and a hash
-  check before use.
-* Compilation runs with shell-escape disabled in a throwaway copy.
-* Text found in templates or web pages is data; it never becomes an instruction.
+```bash
+S=scripts; SRC=orig/main.tex; NEW=new; REP=rep
+python3 $S/profile_template.py  --dir template/ --venue-id iclr2027 --json $REP/profile.json
+python3 $S/verify_template.py   --venue iclr2027 --dir template/ --json $REP/verify.json
+python3 $S/make_rules.py        --src-venue aaai2027 --dst-venue iclr2027 --out $REP/rules.json
+python3 $S/draft_preamble.py    --src $SRC --src-venue aaai2027 --dst-venue iclr2027 --out $REP/preamble.tex
+python3 $S/migrate_tex.py       --in $SRC --out $NEW/main.tex --rules $REP/rules.json --preamble $REP/preamble.tex
+python3 $S/layout_figures.py    --src $SRC --in $NEW/main.tex --out $NEW/main.tex --force \
+        --src-venue aaai2027 --dst-venue iclr2027 --table-captions above --placement t \
+        [--pair fig:a,fig:b] [--wrap fig:c] [--list-tables] --report $REP/layout.json
+python3 $S/body_diff.py         --src $SRC --dst $NEW/main.tex --json $REP/body_diff.json
+$S/compile_check.sh $NEW main.tex $REP/build
+python3 $S/check_compliance.py  --venue iclr2027 --project $NEW --stage submission --src $SRC \
+        --pdf $REP/build/main.pdf --json $REP/compliance.json
+python3 $S/make_zip.py          --project $NEW --main main.tex --out paper_iclr2027.zip --venue iclr2027
+python3 $S/make_report.py       --paper MyPaper --src-venue aaai2027 --dst-venue iclr2027 \
+        --verify $REP/verify.json --rules $REP/rules.json --body-diff $REP/body_diff.json --layout $REP/layout.json \
+        --compile $REP/build/compile.json --compliance $REP/compliance.json --deliverable paper_iclr2027.zip \
+        --out $NEW/MIGRATION_REPORT.md
+python3 tests/run_tests.py
+```
+</details>
 
-## Limitations
+## Guarantees and limits
 
-* `body_diff.py` is a tokenizer with a whitelist, not a TeX engine. Exotic macros may surface as
-  `content` hunks that a human then judges; that is the safe direction.
-* Line numbers refer to the flattened file when `\input` is used.
-* `compile_check.sh` uses XeTeX when it uses `tectonic`; some kits (AAAI's `\pdfinfo`) need
-  pdfLaTeX, which Overleaf provides.
-* Four venues are registered; ACL/AAAI caption rules and the ACL page limit still carry
-  `TODO_CONFIRM` (the scripts treat those as "no rule recorded" and say so).
-* Table width estimation (for wrapping) is a heuristic; the compile step's overfull count is the check.
+| Changes (format) | Never changes |
+|---|---|
+| class, style file, packages, author-block structure | title, abstract, body, captions, footnotes |
+| float sizes, placement, pairing, wrapping, caption side | numbers, tables, formulas, algorithms |
+| `\cite` ↔ `\citep`, `\bibliographystyle` | citation keys, the `.bib`, figure files (hash-checked) |
+| compile errors the migration introduced | pre-existing typos or errors (reported only) |
+
+Safety: the source folder is read-only; nothing is uploaded anywhere; template zips are
+hash-checked and unpacked through a path-traversal guard; compilation runs with shell-escape off.
+
+Limits: `body_diff` is a tokenizer with a layout whitelist, not a TeX engine — exotic macros may
+surface as content hunks for a human to judge, which is the safe direction. Table widths for
+wrapping are estimated; the compile step's overfull count is the check. Rules marked
+`TODO_CONFIRM` in `venues.yaml` are treated as "no rule recorded" and said so in the report.
 
 ## Acknowledgements
 
-The idea of packaging conference migration as an agent skill with a file-integrity helper was
-first published by [ChengxiSHE/paper-conference-migration](https://github.com/ChengxiSHE/paper-conference-migration).
-This project shares no code with it and takes a stricter, format-only stance.
+The idea of packaging conference migration as an agent skill was first published by
+[ChengxiSHE/paper-conference-migration](https://github.com/ChengxiSHE/paper-conference-migration);
+this project shares no code with it and takes a stricter, format-only stance.
 
 ## License
 
