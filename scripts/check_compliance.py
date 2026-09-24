@@ -313,7 +313,7 @@ def main() -> int:
         for e in emails:
             if e in body:
                 hits.append(e)
-    for pat, label in ((r"[Aa]cknowledg", "acknowledgements"), (r"github\.com/[\w.-]+", "GitHub URL"),
+    for pat, label in ((r"\\(?:sub)?section\*?\{[^}]*Acknowledg|\bAcknowledg(?:e)?ments?\b", "acknowledgements"), (r"github\.com/[\w.-]+", "GitHub URL"),
                        (r"https?://(?!www\.overleaf)[^\s}]+", "URL"), (r"our (?:prior|previous|earlier) work", "self-reference")):
         for mm in re.finditer(pat, body):
             hits.append(f"{label} at body offset {mm.start()}: {body[mm.start():mm.start() + 50].strip()!r}")

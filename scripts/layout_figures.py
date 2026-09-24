@@ -36,6 +36,10 @@ re-expresses it as a fraction of the target line width:
                       candidates can be chosen (nothing is written)
   * --fit-table LABEL wrap that table's outermost tabular in \\resizebox{\\linewidth}{!}{...}
                       (for tables that overflow the text width after compiling)
+  * --verbatim-size SIZE
+                      put every verbatim block inside a float into {\\SIZE ... } (e.g. scriptsize):
+                      verbatim never re-wraps, so lines hand-wrapped for a wider source column
+                      overflow a narrower target; a smaller font is the only layout-level fix
   * --table-captions above|below
                       move each table's \\caption (+ following \\label) above or below the
                       tabular material; ICLR: "The table number and title always appear
@@ -1059,6 +1063,7 @@ def main() -> int:
     ap.add_argument("--list-tables", action="store_true", help="print table width estimates and exit (writes nothing)")
     ap.add_argument("--table-captions", choices=["above", "below"], help="move table captions above or below the tabular material")
     ap.add_argument("--fit-table", action="append", default=[], metavar="LABEL", help="scale this table to the text width with \\resizebox (repeatable)")
+    ap.add_argument("--verbatim-size", metavar="SIZE", help="font size switch applied around verbatim blocks that sit inside floats (small, footnotesize, scriptsize)")
     ap.add_argument("--report", help="write a JSON report here")
     args = ap.parse_args()
 
@@ -1254,6 +1259,25 @@ def main() -> int:
     for lab in args.fit_table:
         text, info = fit_table(text, lab)
         fits_done.append(info)
+    verbatim_n = 0
+    if args.verbatim_size:
+        # only blocks inside a float; skip ones already preceded by a size switch on the previous line
+        out_parts, pos = [], 0
+        clean = strip_comments_keep_len(text)
+        floats = float_spans(clean)
+        for m in re.finditer(r"\\begin\s*\{verbatim\}.*?\\end\s*\{verbatim\}", clean, re.S):
+            if not any(a <= m.start() < b for a, b in floats):
+                continue
+            before = clean[:m.start()].rstrip()                 # comment-stripped: a commented %{\\small does not count
+            if re.search(r"\\(tiny|scriptsize|footnotesize|small)\s*$", before):
+                continue
+            out_parts.append(text[pos:m.start()])
+            # the closing brace must start a new line: TeX drops anything after \\end{verbatim} on that line
+            out_parts.append("{\\" + args.verbatim_size + " % paper-migrate: verbatim lines were wrapped for a wider column\n" + text[m.start():m.end()] + "\n}")
+            pos = m.end()
+            verbatim_n += 1
+        out_parts.append(text[pos:])
+        text = "".join(out_parts)
     captions_moved = 0
     if args.table_captions:
         text, captions_moved = move_table_captions(text, args.table_captions)
@@ -1287,6 +1311,8 @@ def main() -> int:
             print(f"NOT paired      {p['labels']}: {p.get('reason')}")
     for f in fits_done:
         print(f"fit table       {f['label']}: {f['status']}" + (f" ({f['reason']})" if f.get("reason") else " -> \\resizebox{\\linewidth}{!}"))
+    if args.verbatim_size:
+        print(f"verbatim        {verbatim_n} block(s) inside floats set to \\{args.verbatim_size}")
     if args.table_captions:
         print(f"table captions  {captions_moved} caption(s) moved {args.table_captions} the tabular material")
     for w in wraps_done:
@@ -1302,7 +1328,7 @@ def main() -> int:
     if args.report:
         Path(args.report).write_text(json.dumps({"rows": rows, "pairs": pairs_done, "wraps": wraps_done, "placement": placement_n,
                                                   "table_captions": {"where": args.table_captions, "moved": captions_moved},
-                                                  "fits": fits_done,
+                                                  "fits": fits_done, "verbatim_resized": verbatim_n,
                                                   "two_column_target": {"figure_env_changes": env_changes, "table_env_changes": table_env_changes, "unwrapped": unwrapped} if two_col else None,
                                                   "src_geometry": src_geo.__dict__, "dst_geometry": dst_geo.__dict__},
                                                  indent=2) + "\n", encoding="utf-8")
