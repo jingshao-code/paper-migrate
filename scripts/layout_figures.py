@@ -837,19 +837,40 @@ def fit_table(text: str, label: str) -> tuple[str, dict]:
     return text[:bs] + new_block + text[be:], info
 
 
+def _box_spans(cblock: str) -> list[tuple[int, int]]:
+    """Spans of sub-boxes (subtable/subfigure/minipage) inside a float block."""
+    spans = []
+    for m in re.finditer(r"\\begin\s*\{(subtable|subfigure|minipage)\}", cblock):
+        e = re.compile(r"\\end\s*\{" + m.group(1) + r"\}").search(cblock, m.end())
+        if e:
+            spans.append((m.start(), e.end()))
+    return spans
+
+
 def _assign_captions(cblock: str) -> list[tuple[tuple[int, int], tuple[int, int, str, str | None] | None]]:
-    """Pair every outermost tabular with its nearest caption group (before or after it)."""
+    """Pair every outermost tabular with its caption group.  Structure first: a caption inside a
+    sub-box belongs to the tabular in that box; only top-level captions use the nearest rule."""
     tabs = _toplevel_tabulars(cblock, 0, len(cblock))
     caps = _caption_groups(cblock)
+    boxes = _box_spans(cblock)
+
+    def box_of(pos: int) -> int:
+        return next((i for i, (a, b) in enumerate(boxes) if a <= pos < b), -1)
+
     pairs: list[tuple[int, int, int]] = []          # (distance, tab_idx, cap_idx)
     for ti, (ts, te) in enumerate(tabs):
         for ci, (ls, le, _, _) in enumerate(caps):
+            bt, bc = box_of(ts), box_of(ls)
+            if bt != bc:
+                continue                             # different boxes never pair
             if le <= ts:
                 d = ts - le                          # caption before the tabular
             elif ls >= te:
                 d = ls - te                          # caption after the tabular
             else:
                 d = 0                                # overlapping (should not happen)
+            if bt >= 0:
+                d = 0                                # same box: settled by structure
             pairs.append((d, ti, ci))
     pairs.sort()
     used_t, used_c = set(), set()

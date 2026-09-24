@@ -36,7 +36,7 @@ EXCLUDE_SUFFIXES = (".aux", ".log", ".bbl", ".blg", ".out", ".fls", ".fdb_latexm
                     ".synctex.gz", ".toc", ".lof", ".lot", ".nav", ".snm", ".vrb", ".pyc")
 # paper-migrate's own evidence files; any other .json (data, prompts) belongs to the paper and stays
 EXCLUDE_NAMES = {".DS_Store", "Thumbs.db", "tectonic.log", "body_diff.json", "compliance.json", "layout.json",
-                 "compile.json", "rules.json", "verify.json", "profile.json", "pdf_check.json", "MIGRATION_REPORT.md"}
+                 "compile.json", "zip_compile.json", "rules.json", "verify.json", "profile.json", "pdf_check.json", "MIGRATION_REPORT.md"}
 EXCLUDE_DIRS = {"__MACOSX", ".git", "__pycache__", ".svn", "build", ".tectonic", "pages"}   # pages/ = pdf_check renders
 GRAPHIC_EXTS = (".pdf", ".png", ".jpg", ".jpeg", ".eps", ".ps", ".tif", ".tiff", ".svg")
 OVERLEAF_MAX_BYTES = 50 * 1024 * 1024

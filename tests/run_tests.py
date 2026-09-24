@@ -212,6 +212,11 @@ def main() -> int:
                   "\\caption{Nested.}\n\\label{tab:n}\n\\end{table}\n")
         mn, nn = move_table_captions(nested, "above")
         check(nn == 1 and mn.index("\\caption{Nested.}") < mn.index("\\begin{tabular}{ll}"), "caption goes above the OUTER tabular, not a nested cell tabular")
+        boxed = ("\\begin{table}[t]\n\\caption{\\subref{tab:p} A. \\subref{tab:q} B.}\n"
+                 "\\begin{subtable}[t]{0.47\\linewidth}\n\\centering\n\\caption{}\n\\label{tab:p}\n\\setlength{\\tabcolsep}{5pt}\n\\begin{tabular}{l}x\\end{tabular}\n\\end{subtable}\\hfill\n"
+                 "\\begin{subtable}[t]{0.5\\linewidth}\n\\centering\n\\caption{}\n\\label{tab:q}\n\\small\n\\setlength{\\tabcolsep}{2pt}\n\\renewcommand{\\arraystretch}{1.08}\n\\begin{tabular}{l}y\\end{tabular}\n\\end{subtable}\n\\end{table}\n")
+        same, nb = move_table_captions(boxed, "above")
+        check(nb == 0 and same == boxed, "captions already above their tabular inside sub-boxes are left alone (structure beats distance)")
 
         print("[2e] pair_floats splits a two-table float into sub-tables with one shared caption")
         from layout_figures import pair_floats  # noqa: E402
