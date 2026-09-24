@@ -101,19 +101,21 @@ python3 scripts/check_compliance.py --venue <dst> --project <new> --main main.te
 ```
 `FAIL` = a format conflict the migration must fix (wrong/foreign style file, forbidden package or command, wrong anonymisation state, caption on the wrong side, missing `\bibliographystyle`, wrong paper size). Fix, rerun steps 5-7. `author action` and `info` items go to the report unchanged.
 
-**8. Package and report.**
+**8. Report, then package.**
 ```
-python3 scripts/make_zip.py --project <new> --main main.tex --out <name>.zip --venue <dst>
+python3 scripts/pdf_check.py --pdf <report>/build/main.pdf --out <new>/pages [--src-pdf ...] --json <report>/pdf_check.json
 python3 scripts/make_report.py --paper <name> --src-venue <src> --dst-venue <dst> --stage <stage> \
         --verify <report>/verify.json --rules <report>/rules.json --body-diff <report>/body_diff.json \
-        --layout <report>/layout.json --compile <report>/build/compile.json --compliance <report>/compliance.json \
-        --deliverable <name>.zip --deliverable <new>/ [--preexisting "..."] --out <new>/MIGRATION_REPORT.md
+        --layout <report>/layout.json --suggest <report>/suggest.json --compile <report>/build/compile.json \
+        --compliance <report>/compliance.json --pdf-check <report>/pdf_check.json \
+        --deliverable <name>.zip --deliverable <new>/ [--preexisting "..."] \
+        --out <new>/MIGRATION_REPORT.md --todo-into <new>/main.tex
+python3 scripts/make_zip.py --project <new> --main main.tex --out <name>.zip --venue <dst>
 ```
-Before writing the report, two acceptance checks on the deliverables themselves:
+`--todo-into` writes the Author to-do list as a comment block at the very top of `main.tex`, so it is the first thing the authors see when they open the project on Overleaf; `MIGRATION_REPORT.md` is packaged into the zip for the details. Both are comments/text only and change nothing in the paper (body_diff ignores comments).
+After packaging, the acceptance check on the deliverable itself:
 ```
-scripts/compile_check.sh <name>.zip main.tex <report>/zipbuild                 # the zip compiles on its own
-python3 scripts/pdf_check.py --pdf <report>/zipbuild/main.pdf --out <report>/pages \
-        [--src-pdf <the authors' source PDF>] --json <report>/pdf_check.json     # every page rendered; rendered words compared
+scripts/compile_check.sh <name>.zip main.tex <report>/zipbuild                 # the zip compiles on its own -> zip_compile.json beside the zip
 ```
 Then **look at every page image** (all main-text pages, the first appendix page, any page the layout pass touched): overlapping floats, boxes past the margin, missing graphics, caption order, sub-caption letters. With a source PDF, `pdf_check` lists words and numbers present in only one rendering; a number that differs is a stop. Add `--pdf-check <report>/pdf_check.json` to `make_report.py`.
 

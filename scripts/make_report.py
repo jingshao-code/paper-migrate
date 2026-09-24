@@ -51,6 +51,8 @@ def main() -> int:
     ap.add_argument("--preexisting", action="append", default=[], help="pre-existing issue found in the source (repeatable)")
     ap.add_argument("--note", action="append", default=[], help="extra line for the 'Not done / notes' section")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--todo-into", metavar="MAIN_TEX",
+                    help="also write the Author to-do list as a comment block at the top of this .tex (replaces an earlier block)")
     args = ap.parse_args()
 
     man = load_manifest(Path(args.manifest))
@@ -247,7 +249,7 @@ def main() -> int:
     if ZC:
         P(f"Independent compile of the delivered zip: {ZC.get('status')}, {ZC.get('pages')} pages, references on page {ZC.get('references_page')}, overfull {ZC.get('overfull_hbox')}.")
     else:
-        P("Independent compile of the delivered zip: not run.")
+        P("Independent compile of the delivered zip: runs after packaging; its result is recorded in `zip_compile.json` next to the zip.")
     if PC:
         P(f"Page images: {PC.get('pages')} pages rendered ({len(PC.get('images', []))} files) -- every page was to be looked at; see the `pages/` folder.")
         tc = PC.get("text_compare")
@@ -301,6 +303,36 @@ def main() -> int:
     P("- `body_diff.json`, `layout.json`, `compliance.json`, `compile.json`, this report")
     Path(args.out).write_text("\n".join(out) + "\n", encoding="utf-8")
     print(f"make_report: wrote {args.out} ({len(out)} lines; {n} author to-do item(s))")
+    if args.todo_into:
+        import textwrap
+        tex = Path(args.todo_into)
+        src = tex.read_text(encoding="utf-8")
+        start, end = "% ==== paper-migrate: AUTHOR TO-DO (start) ====", "% ==== paper-migrate: AUTHOR TO-DO (end) ===="
+        if start in src and end in src:
+            src = src[:src.index(start)] + src[src.index(end) + len(end):].lstrip("\n")
+        todo_lines = []
+        in_todo = False
+        for line in out:
+            if line.startswith("## Author to-do"):
+                in_todo = True
+                continue
+            if in_todo and line.startswith("## "):
+                break
+            if in_todo and line.strip():
+                plain = line.replace("**", "").replace("`", "")
+                plain = plain.split(" _Source:")[0]
+                todo_lines.append(plain)
+        block = [start,
+                 f"% Migrated by paper-migrate from {sname} to {dname} ({args.stage.replace('_', '-')}) on {today}.",
+                 "% Only formatting was changed. Things only the authors can decide (details: MIGRATION_REPORT.md in this project):"]
+        for item in todo_lines:
+            wrapped = textwrap.wrap(item, width=100)
+            block.append("% " + wrapped[0])
+            block.extend("%    " + w for w in wrapped[1:])
+        block.append("% Search this file for 'TODO(' to find where a required section must be written.")
+        block.append(end)
+        tex.write_text("\n".join(block) + "\n" + src, encoding="utf-8")
+        print(f"make_report: to-do block written at the top of {tex} ({len(todo_lines)} item(s))")
     return 0
 
 

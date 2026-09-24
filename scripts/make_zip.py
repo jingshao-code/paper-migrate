@@ -7,8 +7,9 @@
 * Files land at the zip root (Overleaf detects main.tex there).
 * Build artifacts, OS junk and paper-migrate's evidence files are excluded (.aux .log .bbl
   .blg .out .fls .fdb_latexmk .synctex.gz .DS_Store __MACOSX .git __pycache__, body_diff.json
-  and the other report JSON files, *_REPORT.md, and the PDF produced from --main).  The paper's
-  own data files (.json, .csv, ...) are kept.
+  and the other evidence JSON files, and the PDF produced from --main).  MIGRATION_REPORT.md
+  travels with the project so the authors see it on Overleaf; the paper's own data files
+  (.json, .csv, ...) are kept.
 * The project is scanned for \\input/\\include, \\bibliography and
   \\includegraphics references; anything referenced but missing is an error,
   anything present but unreferenced is listed as a warning.
@@ -36,7 +37,7 @@ EXCLUDE_SUFFIXES = (".aux", ".log", ".bbl", ".blg", ".out", ".fls", ".fdb_latexm
                     ".synctex.gz", ".toc", ".lof", ".lot", ".nav", ".snm", ".vrb", ".pyc")
 # paper-migrate's own evidence files; any other .json (data, prompts) belongs to the paper and stays
 EXCLUDE_NAMES = {".DS_Store", "Thumbs.db", "tectonic.log", "body_diff.json", "compliance.json", "layout.json",
-                 "compile.json", "zip_compile.json", "rules.json", "verify.json", "profile.json", "pdf_check.json", "MIGRATION_REPORT.md"}
+                 "compile.json", "zip_compile.json", "rules.json", "verify.json", "profile.json", "pdf_check.json", "suggest.json"}
 EXCLUDE_DIRS = {"__MACOSX", ".git", "__pycache__", ".svn", "build", ".tectonic", "pages"}   # pages/ = pdf_check renders
 GRAPHIC_EXTS = (".pdf", ".png", ".jpg", ".jpeg", ".eps", ".ps", ".tif", ".tiff", ".svg")
 OVERLEAF_MAX_BYTES = 50 * 1024 * 1024
@@ -171,7 +172,7 @@ def main() -> int:
             continue
         if not p.is_file() or p.is_symlink():
             continue
-        if p.name in excl_names or p.name.endswith(EXCLUDE_SUFFIXES) or p.name.endswith("_REPORT.md"):
+        if p.name in excl_names or p.name.endswith(EXCLUDE_SUFFIXES):
             continue
         candidates.append(p)
 
