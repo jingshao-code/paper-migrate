@@ -951,7 +951,8 @@ def move_table_captions(text: str, where: str) -> tuple[str, int]:
 
 
 def wrap_float(text: str, spec: str, anchors: dict[str, str], project: Path, dst_text_in: float,
-               default_max: float = 0.5, table_max: float = 0.6, dst_text_height_in: float = 9.0) -> tuple[str, dict]:
+               default_max: float = 0.5, table_max: float = 0.6, dst_text_height_in: float = 9.0,
+               dry: bool = False) -> tuple[str, dict]:
     parts = spec.split("@")
     label = parts[0].strip()
     side = parts[1].strip() if len(parts) > 1 and parts[1].strip() else "r"
@@ -1025,8 +1026,41 @@ def wrap_float(text: str, spec: str, anchors: dict[str, str], project: Path, dst
     cut = min(2, len(tail) - len(tail.lstrip("\n")))
     without = text[:bs].rstrip(" ") + text[be + cut:]
     anc = find_anchor(without, label, anchors.get(label))
+    info["anchor"] = "reference" if anc else None
     if anc is None:
-        info["reason"] = "no paragraph references this label outside floats; give --wrap-anchor LABEL@SNIPPET"
+        # never referenced: anchor at the text paragraph the author placed the float after, i.e. the
+        # last text run BEFORE its source position (keeps the float ahead of later floats, so the
+        # numbering does not shift); fall back to the first text run after it
+        cw = strip_comments_keep_len(without)
+        runs = text_runs(cw)
+        def text_start(a: int, b: int) -> int | None:
+            seg = cw[a:b]
+            if FLOAT_RUN_RE.match(seg) or STOP_RUN_RE.match(seg):
+                return None
+            off = a
+            for line in seg.split("\n"):
+                if LEAD_LINE_RE.match(line) or not line.strip():
+                    off += len(line) + 1
+                    continue
+                break
+            return off if off < b else None
+        before = [(a, b) for a, b in runs if b <= bs]
+        after = [(a, b) for a, b in runs if a >= bs]
+        for a, b in reversed(before[-2:]) if before else []:
+            off = text_start(a, b)
+            if off is not None and word_count(cw[off:b]) >= 40:
+                anc = (off, cw[off:off + 60].replace("\n", " "))
+                info["anchor"] = "source position: the paragraph before the float (never referenced in the text)"
+                break
+        if anc is None:
+            for a, b in after:
+                off = text_start(a, b)
+                if off is not None:
+                    anc = (off, cw[off:off + 60].replace("\n", " "))
+                    info["anchor"] = "source position: the paragraph after the float (never referenced in the text)"
+                    break
+    if anc is None:
+        info["reason"] = "no paragraph references this label and no text follows its source position"
         return text, info
     anchor, preview = anc
     have, words = capacity_lines(without, anchor, frac, dst_text_in)
@@ -1034,6 +1068,9 @@ def wrap_float(text: str, spec: str, anchors: dict[str, str], project: Path, dst
                  "capacity_lines": round(have, 1), "anchor_words": words, "anchor_preview": preview})
     if have < need:
         info["reason"] = f"anchor paragraph(s) offer ~{have:.0f} lines, box needs ~{need}; kept as a float"
+        return text, info
+    if dry:
+        info["status"] = "possible"
         return text, info
     wrap = (f"% paper-migrate layout: {base} wrapped by text (was a standalone float); caption and label unchanged\n"
             f"\\begin{{{WRAP_ENV[base]}}}{{{side}}}{{{fmt_frac(frac)}\\linewidth}}\n{inner}\n\\end{{{WRAP_ENV[base]}}}\n")
@@ -1082,6 +1119,8 @@ def main() -> int:
     ap.add_argument("--wrap-max", type=float, default=0.5, help="default cap on a wrapped figure's width (fraction)")
     ap.add_argument("--wrap-max-table", type=float, default=0.6, help="refuse to wrap tables estimated wider than this fraction")
     ap.add_argument("--list-tables", action="store_true", help="print table width estimates and exit (writes nothing)")
+    ap.add_argument("--suggest", action="store_true",
+                    help="after the size pass, print for every figure/table whether it could be wrapped or paired and why; writes nothing")
     ap.add_argument("--table-captions", choices=["above", "below"], help="move table captions above or below the tabular material")
     ap.add_argument("--fit-table", action="append", default=[], metavar="LABEL", help="scale this table to the text width with \\resizebox (repeatable)")
     ap.add_argument("--verbatim-size", metavar="SIZE", help="font size switch applied around verbatim blocks that sit inside floats (small, footnotesize, scriptsize)")
@@ -1240,6 +1279,69 @@ def main() -> int:
                 text = text[:bs] + f"\\begin{{{want}}}" + text[bs + len(f"\\begin{{{env}}}"):es] + f"\\end{{{want}}}" + text[ee:]
                 table_env_changes += 1
 
+    anchors = {}
+    for spec in args.wrap_anchor:
+        if "@" in spec:
+            k, v = spec.split("@", 1)
+            anchors[k.strip()] = v
+    anchors_for_suggest = anchors
+
+    # ---- suggestions: what could be wrapped or paired, and why not ----------- #
+    if args.suggest:
+        clean_s = strip_comments_keep_len(text)
+        rows_s = []
+        blocks = []
+        for m in re.finditer(r"\\begin\s*\{(figure\*?|table\*?)\}", clean_s):
+            e = re.compile(r"\\end\s*\{" + re.escape(m.group(1)) + r"\}").search(clean_s, m.end())
+            if not e:
+                continue
+            blk = clean_s[m.start():e.end()]
+            labs = re.findall(r"\\label\s*\{([^}]*)\}", blk)
+            ncap = len(re.findall(r"\\caption\s*(\[|\{)", blk))
+            if not labs:
+                continue
+            base = m.group(1).rstrip("*")
+            if base == "figure":
+                gs = list(GRAPHIC_RE.finditer(blk))
+                fr = 0.0
+                for g in gs:
+                    we = parse_width(g.group(1) or "")
+                    mm = re.fullmatch(r"([0-9.]+)?\\(linewidth|columnwidth|textwidth)", (we or "").replace(" ", ""))
+                    fr += float(mm.group(1)) if mm and mm.group(1) else (1.0 if mm else 0)
+                if re.search(r"\\begin\{subfigure\}", blk):
+                    fr = sum(float(x) for x in re.findall(r"\\begin\{subfigure\}\s*(?:\[[^\]]*\])?\s*\{([0-9.]+)\\linewidth\}", blk)) or fr
+            else:
+                est = estimate_table(blk, DW)
+                fr = (est["width_pt"] or 0) / (DW * 72.27) if est["width_pt"] else 1.0
+            blocks.append({"label": labs[0], "env": m.group(1), "frac": round(min(fr, 1.0), 2), "captions": ncap, "start": m.start()})
+        for i, b in enumerate(blocks):
+            verdict = ""
+            if two_col:
+                verdict = "two-column target: no wrapping"
+            elif b["captions"] > 1:
+                verdict = "holds several captions: pair/split instead of wrapping"
+            elif b["frac"] > (0.6 if b["env"].startswith("table") else 0.5):
+                verdict = f"too wide to wrap ({b['frac']:.2f} of the line; limit {0.6 if b['env'].startswith('table') else 0.5})"
+            else:
+                _, info = wrap_float(text, b["label"], anchors_for_suggest if 'anchors_for_suggest' in dir() else {}, Path(args.inp).resolve().parent, DW,
+                                     args.wrap_max, args.wrap_max_table, dst_geo.text_height_in, dry=True)
+                if info["status"] == "possible":
+                    verdict = f"WRAP ok at {fmt_frac(info['frac'])}: needs ~{info['need_lines']} lines, anchor ({info['anchor']}) offers ~{info['capacity_lines']}"
+                else:
+                    verdict = "cannot wrap: " + info.get("reason", "")
+            nb = blocks[i + 1] if i + 1 < len(blocks) else None
+            if nb and nb["env"].rstrip("*") == b["env"].rstrip("*") and b["frac"] + nb["frac"] <= 1.05 and b["captions"] == 1 and nb["captions"] == 1:
+                between = clean_s[b["start"]:nb["start"]]
+                if not re.search(r"\\(section|subsection)\b", between):
+                    verdict += f" | PAIR with {nb['label']} possible ({b['frac']:.2f}+{nb['frac']:.2f})"
+            rows_s.append({**b, "verdict": verdict})
+        print(f"{'label':<26} {'env':<8} {'width':>5} caps  verdict")
+        for r in rows_s:
+            print(f"{r['label']:<26} {r['env']:<8} {r['frac']:>5.2f}  {r['captions']:>2}   {r['verdict'][:150]}")
+        if args.report:
+            Path(args.report).write_text(json.dumps({"suggestions": rows_s}, indent=2) + "\n", encoding="utf-8")
+        return 0
+
     # ---- placement -------------------------------------------------------- #
     placement_n = 0
     if args.placement:
@@ -1264,11 +1366,6 @@ def main() -> int:
 
     # ---- wrapping --------------------------------------------------------- #
     wraps_done = []
-    anchors = {}
-    for spec in args.wrap_anchor:
-        if "@" in spec:
-            k, v = spec.split("@", 1)
-            anchors[k.strip()] = v
     for spec in args.wrap:
         if two_col:
             wraps_done.append({"label": spec.split("@")[0], "side": "r", "status": "refused",

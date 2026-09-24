@@ -1276,6 +1276,13 @@ def main() -> int:
     checks["refs"] = {"src": len(rf_s), "dst": len(rf_d),
                       "missing": sorted(rf_s - rf_d), "added": sorted(rf_d - rf_s),
                       "dangling_in_dst": sorted(rf_d - lb_d)}
+    fl_s = [l for l in sa.labels if l.split(":")[0] in ("fig", "tab", "figure", "table")]
+    fl_d = [l for l in sb.labels if l.split(":")[0] in ("fig", "tab", "figure", "table")]
+    if sorted(fl_s) == sorted(fl_d) and fl_s != fl_d:
+        moved = [(i, a, b) for i, (a, b) in enumerate(zip(fl_s, fl_d)) if a != b]
+        reviews.append(f"float order changed at {len(moved)} position(s) (numbering shifts accordingly), first: {moved[0][1]} -> {moved[0][2]}; "
+                       "check literal 'Figure N' mentions in the text")
+    checks["float_order"] = {"src": fl_s, "dst": fl_d, "same": fl_s == fl_d}
     heads_ok = sa.headings == sb.headings
     checks["headings"] = {"ok": heads_ok, "src": len(sa.headings), "dst": len(sb.headings)}
     if not heads_ok:
@@ -1313,21 +1320,29 @@ def main() -> int:
 
     # ---- figure files ----------------------------------------------------- #
     fig_rows = []
-    for rel_s, rel_d in zip(sa.graphics, sb.graphics):
+    dst_by_name = {}
+    for rel_d in sb.graphics:
+        dst_by_name.setdefault(os.path.basename(rel_d), rel_d)
+    for rel_s in sa.graphics:
+        rel_d = dst_by_name.get(os.path.basename(rel_s))
         ps = locate(src_root, rel_s, GRAPHIC_EXTS)
-        pd = locate(dst_root, rel_d, GRAPHIC_EXTS)
+        pd = locate(dst_root, rel_d, GRAPHIC_EXTS) if rel_d else None
         row = {"src_ref": rel_s, "dst_ref": rel_d, "src_found": bool(ps), "dst_found": bool(pd)}
         if ps and pd:
             row["equal"] = sha256_file(ps) == sha256_file(pd)
             if not row["equal"]:
                 problems.append(f"figure file changed: {rel_d}")
+        elif rel_d is None:
+            problems.append(f"graphic no longer included in the migrated project: {rel_s}")
         elif not pd:
             problems.append(f"figure file not found in migrated project: {rel_d}")
         elif not ps:
             reviews.append(f"figure file not found in source project (pre-existing path issue?): {rel_s}")
         fig_rows.append(row)
-    if len(sa.graphics) != len(sb.graphics):
-        problems.append(f"number of \\includegraphics changed: {len(sa.graphics)} -> {len(sb.graphics)}")
+    if sorted(os.path.basename(g) for g in sa.graphics) != sorted(os.path.basename(g) for g in sb.graphics):
+        problems.append(f"set of included graphics changed: {sorted(os.path.basename(g) for g in sa.graphics)} -> {sorted(os.path.basename(g) for g in sb.graphics)}")
+    elif sa.graphics != sb.graphics and [os.path.basename(g) for g in sa.graphics] != [os.path.basename(g) for g in sb.graphics]:
+        reviews.append("order of graphics in the source changed (a float was moved): figure numbers may shift; see the layout report")
     checks["figure_files"] = fig_rows
 
     # ---- verdict ---------------------------------------------------------- #

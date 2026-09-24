@@ -128,6 +128,16 @@ def main() -> int:
         check(r.returncode == 0 and fj["fits"] and fj["fits"][0]["status"] == "skipped" and "already" in fj["fits"][0].get("reason", ""),
               "--fit-table skips a table that already has a resizebox and says why")
 
+        print("[2b2] layout_figures --suggest gives every float a verdict")
+        sg = tmp / "suggest.json"
+        r = run(PY, S / "layout_figures.py", "--src", src / "main.tex", "--in", dst / "main.tex", "--out", "/dev/null", "--force",
+                "--src-venue", "aaai2027", "--dst-venue", "iclr2027", "--suggest", "--report", sg)
+        sj = json.loads(sg.read_text()) if sg.exists() else {"suggestions": []}
+        labs = {s_["label"]: s_["verdict"] for s_ in sj["suggestions"]}
+        check(r.returncode == 0 and "tab:main" in labs and "fig:overview" in labs, f"verdicts for the floats ({sorted(labs)})")
+        check("too wide" in labs.get("fig:overview", ""), "full-width figure: too wide to wrap")
+        check(labs.get("tab:main", "").startswith("WRAP ok") or "cannot wrap" in labs.get("tab:main", ""), f"small table gets a wrap verdict with numbers: {labs.get('tab:main', '')[:70]}")
+
         print("[2c] layout_figures --wrap: wraps when the anchor paragraph is long enough, refuses otherwise")
         wdst = tmp / "wrapdst"
         shutil.copytree(dst, wdst)
@@ -153,6 +163,9 @@ def main() -> int:
         wd = json.loads((tmp / "wrapdiff.json").read_text())
         check(r.returncode == 0 and wd["hunks"]["content"] == 0, "body_diff PASS after wrapping (0 content hunks)")
         check(wd["hunks"]["structure"] == 1 and "moved block" in wd["hunk_details"]["structure"][0]["note"], "wrap shows as one moved-block structure hunk")
+        check(all(r.get("equal") for r in wd["checks"]["figure_files"]) and not any("figure file changed" in p_ for p_ in wd["problems"]),
+              "figure files matched by name after the float moved (no false 'changed')")
+        check(any("float order changed" in r for r in wd["reviews"]) or wd["checks"]["float_order"]["same"], "float order change is reviewed, not silent")
 
         # tables: estimate width, wrap the small one, move captions above (ICLR rule)
         r = run(PY, S / "layout_figures.py", "--src", src / "main.tex", "--in", wdst / "main.tex",
@@ -394,7 +407,7 @@ def main() -> int:
         check(r.returncode == 0 and z.exists(), "zip written")
         with zipfile.ZipFile(z) as zf:
             names = set(zf.namelist())
-        check({"main.tex", "refs.bib", "figures/plot.png", "iclr2027_conference.sty"} <= names, "main, bib, figure, sty at root")
+        check({"main.tex", "refs.bib", "figures/plot.png", "figures/plot2.png", "iclr2027_conference.sty"} <= names, "main, bib, figures, sty at root")
         check(Path(str(z) + ".sha256.txt").exists(), "hash sidecar written")
         (dst / "prompts.json").write_text('{"system": "toy"}\n')
         (dst / "body_diff.json").write_text("{}\n")

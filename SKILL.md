@@ -74,8 +74,10 @@ Rules come from the two venue entries (column model, citation style, bibliograph
 python3 scripts/layout_figures.py --src <orig>/main.tex --in <new>/main.tex --out <new>/main.tex --force \
         --src-venue <src> --dst-venue <dst> --table-captions <above|below per venues.yaml rules.captions.table> \
         [--placement t] [--pair fig:a,fig:b] [--wrap fig:c] [--wrap tab:d] [--min-frac 0.45] --report <report>/layout.json
-python3 scripts/layout_figures.py ... --list-tables       # to pick table wrap candidates
+python3 scripts/layout_figures.py ... --suggest --report <report>/suggest.json   # FIRST: one verdict per float
+python3 scripts/layout_figures.py ... --list-tables       # table widths only
 ```
+Run `--suggest` before deciding: it prints, for every figure and table, its width after the size pass and whether it can be wrapped (narrow enough, a long enough anchor paragraph, one caption) or paired with its neighbour, with the reason when it cannot. Wrapping is the single biggest visual difference between a two-column source and a single-column target, so every float gets an explicit decision, and `make_report.py --suggest` prints that table in the report. A width above the cap can still be wrapped with an explicit `@FRAC` when the authors prefer it; say so in the report.
 Restores each graphic's physical size from the two geometries and applies the target's caption rule. Pairing and wrapping are **opt-in flags** (a plain run does neither); when used, following `references/layout-conventions.md`, combines small neighbours into one float with (a)/(b) sub-captions (original caption texts verbatim; `\ref` renders "3a", so no text is edited; `--pair-mode minipage` for independent captions) or wraps small floats with text where the paragraph is long enough (the script refuses otherwise, and never wraps a float holding two captions or a box taller than ~45% of the text height). Floats never move away from their discussion for the sake of space: pairing needs neighbouring floats in the same section (no heading between them, at most three paragraphs apart), wrapping anchors at the paragraph that first references the float, and step 7 reports every float that prints before its first mention.
 
 **5. Check content invariance.**

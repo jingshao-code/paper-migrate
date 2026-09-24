@@ -45,7 +45,7 @@ def main() -> int:
     ap.add_argument("--dst-venue", required=True)
     ap.add_argument("--stage", default="submission")
     ap.add_argument("--manifest", default=str(Path(__file__).resolve().parent.parent / "venues.yaml"))
-    for k in ("verify", "rules", "body_diff", "layout", "compile", "compliance", "pdf_check", "zip_compile"):
+    for k in ("verify", "rules", "body_diff", "layout", "compile", "compliance", "pdf_check", "zip_compile", "suggest"):
         ap.add_argument("--" + k.replace("_", "-"))
     ap.add_argument("--deliverable", action="append", default=[])
     ap.add_argument("--preexisting", action="append", default=[], help="pre-existing issue found in the source (repeatable)")
@@ -56,7 +56,7 @@ def main() -> int:
     man = load_manifest(Path(args.manifest))
     sv, dv = man["venues"].get(args.src_venue, {}), man["venues"].get(args.dst_venue, {})
     sname, dname = sv.get("name", args.src_venue), dv.get("name", args.dst_venue)
-    V, R, B, L, C, K, PC, ZC = (load(getattr(args, k)) for k in ("verify", "rules", "body_diff", "layout", "compile", "compliance", "pdf_check", "zip_compile"))
+    V, R, B, L, C, K, PC, ZC, SG = (load(getattr(args, k)) for k in ("verify", "rules", "body_diff", "layout", "compile", "compliance", "pdf_check", "zip_compile", "suggest"))
     today = dt.date.today().isoformat()
     out: list[str] = []
     P = out.append
@@ -214,6 +214,18 @@ def main() -> int:
     else:
         P("layout_figures: not run.")
     P("")
+
+    # ---------------- float decisions ------------------------------------------------
+    if SG and SG.get("suggestions"):
+        P("## Float decisions (wrap / pair / keep)")
+        P("Every figure and table after the size pass, its width as a fraction of the line, and what the layout pass could do with it. "
+          "Wrapping needs a float narrower than half the line (tables: 0.6) beside a paragraph long enough to hold it; the applied choices are in the Layout section.")
+        P("")
+        P("| Float | Width | Verdict |")
+        P("|---|---|---|")
+        for r in SG["suggestions"]:
+            P(f"| `{r['label']}` ({r['env']}) | {r['frac']:.2f} | {r['verdict'].replace('|', '/')} |")
+        P("")
 
     # ---------------- compile --------------------------------------------------------
     P("## Compile (local sandbox)")
