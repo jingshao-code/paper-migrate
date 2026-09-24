@@ -61,14 +61,16 @@ if command -v pdftotext >/dev/null 2>&1 && [ -n "$pages" ]; then
   echo "appendix       starts on page ${apppage:-not found}"
 fi
 ov=$(grep -c 'Overfull \\hbox' "$log" 2>/dev/null); worst=$(grep -oE 'Overfull \\hbox \([0-9.]+pt' "$log" 2>/dev/null | sort -t'(' -k2 -rn | head -1 | grep -oE '[0-9.]+pt'); ur=$(grep -c 'Reference .* undefined' "$log" 2>/dev/null); uc=$(grep -c 'Citation .* undefined' "$log" 2>/dev/null)
+# the worst overfull boxes with their source lines (for the report; formulas and tables are the usual culprits)
+ovlist=$(grep -oE 'Overfull \\hbox \([0-9.]+pt too wide\) (in paragraph at lines [0-9-]+|detected at line [0-9]+|in alignment at lines [0-9-]+)' "$log" 2>/dev/null | sort -t'(' -k2 -rn | head -8 | sed -E 's/Overfull \\hbox \(([0-9.]+)pt too wide\) .*(lines? [0-9-]+)/\1pt at \2/' | paste -sd ';' - | sed 's/;/; /g')
 echo "overfull hbox  ${ov:-0}   (worst: ${worst:-none})"
 echo "undefined refs ${ur:-0}   undefined cites ${uc:-0}"
 wf=$(grep -c 'Package wrapfig Warning' "$log" 2>/dev/null); ov2=$(grep -c 'Overfull \\vbox' "$log" 2>/dev/null)
 echo "wrapfig warns  ${wf:-0}   overfull vbox ${ov2:-0}   (a wrapped float that collides or is forced to float shows up here)"
 if [ -n "$outdir" ]; then
   mkdir -p "$outdir"; cp -f "$pdf" "$log" "$outdir/" 2>/dev/null
-  printf '{"engine": "%s", "status": "compiled", "pages": %s, "references_page": %s, "appendix_page": %s, "overfull_hbox": %s, "worst_overfull_pt": "%s", "undefined_refs": %s, "undefined_cites": %s, "wrapfig_warnings": %s, "overfull_vbox": %s}\n' \
-    "$engine" "${pages:-null}" "${refpage:-null}" "${apppage:-null}" "${ov:-0}" "${worst:-none}" "${ur:-0}" "${uc:-0}" "${wf:-0}" "${ov2:-0}" > "$outdir/compile.json"
+  printf '{"engine": "%s", "status": "compiled", "pages": %s, "references_page": %s, "appendix_page": %s, "overfull_hbox": %s, "worst_overfull_pt": "%s", "overfull_worst_lines": "%s", "undefined_refs": %s, "undefined_cites": %s, "wrapfig_warnings": %s, "overfull_vbox": %s}\n' \
+    "$engine" "${pages:-null}" "${refpage:-null}" "${apppage:-null}" "${ov:-0}" "${worst:-none}" "${ovlist:-}" "${ur:-0}" "${uc:-0}" "${wf:-0}" "${ov2:-0}" > "$outdir/compile.json"
   echo "copied         $pdf, $log and compile.json -> $outdir"
 fi
 echo "RESULT: COMPILED"

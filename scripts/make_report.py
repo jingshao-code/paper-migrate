@@ -99,6 +99,9 @@ def main() -> int:
         if refused:
             n += 1
             P(f"{n}. **Not wrapped on purpose:** " + "; ".join(f"`{w['label']}` ({w.get('reason', '')})" for w in refused) + ".")
+    if C and C.get("status") == "compiled" and int(C.get("overfull_hbox") or 0) > 0:
+        n += 1
+        P(f"{n}. **Overfull boxes.** {C['overfull_hbox']} line(s) run into the margin (worst {C.get('worst_overfull_pt')}), see the Compile section for their source lines; usually a display equation or table wider than the column.")
     if K:
         for c in K["checks"]:
             if c["status"] == "info" and c["rule"] in ("main-text page limit", "references position"):
@@ -214,6 +217,8 @@ def main() -> int:
         if C.get("status") == "compiled":
             P(f"{C.get('engine')}: {C.get('pages')} pages; references start on page {C.get('references_page')}; appendix starts on page {C.get('appendix_page')}; "
               f"overfull hbox {C.get('overfull_hbox')} (worst {C.get('worst_overfull_pt')}); undefined refs {C.get('undefined_refs')}, cites {C.get('undefined_cites')}; wrapfig warnings {C.get('wrapfig_warnings')}.")
+            if C.get("overfull_worst_lines"):
+                P(f"Overfull boxes by source line (worst first): {C['overfull_worst_lines']}. Boxes at display equations or tables mean the formula or table is wider than the column; the tool does not reformat formulas, so these are for the authors.")
             P("Overleaf compiles with pdfLaTeX by default; line breaks and the exact page count may differ slightly. Treat the Overleaf result as authoritative.")
         else:
             P(f"{C.get('engine')}: COMPILE FAILED -- see the build log.")
