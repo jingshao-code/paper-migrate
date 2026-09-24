@@ -6,8 +6,8 @@ word of the paper**. The result is an Overleaf-ready zip and a one-page report t
 what only you can decide (page limit, required statements, anything to eyeball).
 
 Works with any venue. Four are pre-registered with their rules (ICLR 2027, NeurIPS 2026, ACL/ARR,
-AAAI-27); for any other, point the skill at the official template package and it reads the rules
-from the package first, asks you to confirm what it could not read, then converts.
+AAAI-27); for any other (ICML, NAACL, CVPR, ...), point the skill at the official template package
+and it reads the rules from the package first, asks you to confirm what it could not read, then converts.
 
 ## Use
 
@@ -72,39 +72,19 @@ In the output folder:
   migration itself is not finished.
 - Then open the PDF on Overleaf and read it once; the report tells you which pages changed layout.
 
-## Adding a venue
+## Templates
 
-`python3 scripts/profile_template.py --dir <official package> --venue-id icml2027 --yaml` prints a
-`venues.yaml` entry with everything the package states and `TODO_CONFIRM` for the rest. Fill the
-TODOs from the venue's author page (quote the sentence, add `verified_on`), and the venue is
-available in both directions. `references/venue-checklist.md` says where each field comes from.
-Bundle the official zip under `assets/templates/` only if its publisher allows redistribution.
+`assets/templates/` holds unmodified copies of **official** conference packages (currently ICLR 2027
+and NeurIPS 2026), each with its download URL, date and SHA-256 recorded in `venues.yaml`. The
+folder is updated as venues publish new packages, and contributions are welcome: open a pull
+request with the latest official package and its `venues.yaml` entry (the skill prints a draft
+entry with `python3 scripts/profile_template.py --dir <package> --yaml`; `references/venue-checklist.md`
+says where each field comes from). Only packages whose publisher allows redistribution are stored
+here; for the others (e.g. AAAI's author kit) point the skill at your own download.
 
-<details>
-<summary>Manual use of the scripts</summary>
-
-```bash
-S=scripts; SRC=orig/main.tex; NEW=new; REP=rep
-python3 $S/profile_template.py  --dir template/ --venue-id iclr2027 --json $REP/profile.json
-python3 $S/verify_template.py   --venue iclr2027 --dir template/ --json $REP/verify.json
-python3 $S/make_rules.py        --src-venue aaai2027 --dst-venue iclr2027 --out $REP/rules.json
-python3 $S/draft_preamble.py    --src $SRC --src-venue aaai2027 --dst-venue iclr2027 --out $REP/preamble.tex
-python3 $S/migrate_tex.py       --in $SRC --out $NEW/main.tex --rules $REP/rules.json --preamble $REP/preamble.tex
-python3 $S/layout_figures.py    --src $SRC --in $NEW/main.tex --out $NEW/main.tex --force \
-        --src-venue aaai2027 --dst-venue iclr2027 --table-captions above --placement t \
-        [--pair fig:a,fig:b] [--wrap fig:c] [--list-tables] --report $REP/layout.json
-python3 $S/body_diff.py         --src $SRC --dst $NEW/main.tex --json $REP/body_diff.json
-$S/compile_check.sh $NEW main.tex $REP/build
-python3 $S/check_compliance.py  --venue iclr2027 --project $NEW --stage submission --src $SRC \
-        --pdf $REP/build/main.pdf --json $REP/compliance.json
-python3 $S/make_zip.py          --project $NEW --main main.tex --out paper_iclr2027.zip --venue iclr2027
-python3 $S/make_report.py       --paper MyPaper --src-venue aaai2027 --dst-venue iclr2027 \
-        --verify $REP/verify.json --rules $REP/rules.json --body-diff $REP/body_diff.json --layout $REP/layout.json \
-        --compile $REP/build/compile.json --compliance $REP/compliance.json --deliverable paper_iclr2027.zip \
-        --out $NEW/MIGRATION_REPORT.md
-python3 tests/run_tests.py
-```
-</details>
+You do not have to wait for a venue to be added: give the skill the official template package and
+it reads the rules from the package, asks you to confirm anything it could not read, and converts.
+Step-by-step commands for running the scripts by hand are in `SKILL.md`.
 
 ## Guarantees and limits
 
@@ -123,11 +103,6 @@ surface as content hunks for a human to judge, which is the safe direction. Tabl
 wrapping are estimated; the compile step's overfull count is the check. Rules marked
 `TODO_CONFIRM` in `venues.yaml` are treated as "no rule recorded" and said so in the report.
 
-## Acknowledgements
-
-The idea of packaging conference migration as an agent skill was first published by
-[ChengxiSHE/paper-conference-migration](https://github.com/ChengxiSHE/paper-conference-migration);
-this project shares no code with it and takes a stricter, format-only stance.
 
 ## License
 
