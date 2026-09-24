@@ -1,0 +1,306 @@
+# venues.yaml -- conference registry for the paper-migrate skill.
+#
+# One entry per venue+year.  Templates are NOT bundled here (see assets/); every file is
+# checked against the hashes below before use.  Every rule quotes the sentence it was read
+# from and carries a verified_on date; a rule whose date predates the current call for papers
+# must be re-read, never assumed.  Fields marked TODO_CONFIRM have not been verified against
+# the official page yet -- scripts treat them as "no rule recorded".
+#
+# How the scripts use an entry:
+#   layout.*                       layout_figures.py (physical sizes), make_rules.py (column model)
+#   template.files/needed_in_project   verify_template.py, make_zip.py, check_compliance.py
+#   template.documentclass/style_line/packages_after_style/preamble_extras  draft_preamble.py
+#   template.citation_style/bibliographystyle(_default)/natbib_loaded_by_style  make_rules.py, draft_preamble.py
+#   template.venue_macros/venue_macro_map/mandatory_preamble   draft_preamble.py (drop or map source-venue lines)
+#   template.anonymization.<stage>.{line,must_match,must_not_match}  draft_preamble.py, check_compliance.py
+#   rules.*                        make_rules.py (TODO comments), layout_figures.py (captions), check_compliance.py
+schema: 2
+
+venues:
+
+  iclr2027:
+    name: ICLR 2027
+    kind: conference
+    official:
+      author_guidelines: https://iclr.cc/Conferences/2027/AuthorGuidelines
+      call_for_papers: https://iclr.cc/Conferences/2027/CallForPapers
+      template_zip: https://media.iclr.cc/Conferences/ICLR2027/iclr-2027-style-files.zip
+      template_zip_sha256: 0d940dfa9398ae99a18f24a85a8a683f367204b6af6d17d2899e60a67102529e
+      template_mirror_github: https://github.com/ICLR/Master-Template
+      overleaf: not an official channel; community copies may lag -- do not use
+      verified_on: 2026-09-23
+      bundled_copy: assets/templates/iclr2027/iclr-2027-style-files.zip
+    layout:
+      columns: 1
+      text_width_in: 5.5
+      column_width_in: 5.5
+      text_height_in: 9.0
+      source: 'iclr2027_conference.sty: \textwidth 5.5 true in, \textheight 9.0 true in'
+    template:
+      root_in_zip: iclr2027/
+      files:
+        iclr2027_conference.sty: 797deef41724e93761426ac0cbcca46279a91cc650dd1f0ce76a4f08d2098ea6
+        iclr2027_conference.bst: 2d67552db7ed38ccfccb5957b52f95656e25c249724761d3cf5f7922ad1844c5
+        iclr2027_conference.tex: 03e556d6e5593e498fd39f262ec2d184ebfe8693cbf47fb7cea3402d8d5166ac
+        iclr2027_conference.bib: cdd86e7d4c31854dcf2145871657c944588a6d44c3b72e160ff4baa8df1a52fb
+        math_commands.tex: 90473c4d0542070db244cea73ef962d6cddc5b2a746757e6a40ddf5fdfb90ba9
+        fancyhdr.sty: b56ec4434b9f4607529a4b23dc68ad8d4b94f1f631c8cddaf7da78140d53a5ea
+        natbib.sty: 88bc70c0e48461934cab5b2accef06b74a8b3ac45ad03ccd3f2a6b7e0d6d530d
+      needed_in_project: [iclr2027_conference.sty, iclr2027_conference.bst, fancyhdr.sty, natbib.sty]
+      optional_in_project: [math_commands.tex]   # defines many one-letter macros; collision risk, skip unless the paper used it
+      documentclass: '\documentclass{article}'
+      style_line: '\usepackage{iclr2027_conference,times}'
+      packages_after_style: [hyperref, url]
+      preamble_extras: ['\usepackage[T1]{fontenc} % paper-migrate: text-mode < > | render correctly with Times under T1']
+      bibliographystyle: iclr2027_conference
+      citation_style: authoryear
+      style_loads: [natbib, fancyhdr, eso-pic]
+      natbib_loaded_by_style: true
+      section_numbering: numbered
+      author_block: '\author{Name\textsuperscript{1} \quad Name2\textsuperscript{2} \\ Affiliation lines \\ \texttt{emails}}  (\And / \AND separate author groups; \thanks{} for footnotes)'
+      venue_macros: [iclrfinalcopy]
+      anonymization:
+        mechanism: 'anonymous while \iclrfinalcopy is commented out; camera-ready uncomments it'
+        submission:   {line: '%\iclrfinalcopy % Uncomment for camera-ready version, but NOT for submission.', must_not_match: '\\iclrfinalcopy'}
+        rebuttal:     {line: '%\iclrfinalcopy % Uncomment for camera-ready version, but NOT for submission.', must_not_match: '\\iclrfinalcopy'}
+        camera_ready: {line: '\iclrfinalcopy', must_match: '\\iclrfinalcopy'}
+    rules:
+      page_limit:
+        submission: 9
+        rebuttal: 10
+        camera_ready: 10
+        counts: main text including figures and tables
+        excluded: [references, appendix (after bibliography), AI use statement, ethics statement, reproducibility statement]
+        source: 'AuthorGuidelines 2026-09-23: "9 pages" at submission, "increased to 10 pages" for rebuttal/camera-ready; references "does not count towards the page limit"'
+      required_sections:
+        - name: AI use statement
+          status: required
+          pattern: '\\(sub)?section\*?\{[^}]*AI use[^}]*\}'
+          counts_toward_limit: false
+          placement: before_bibliography
+          source: 'template .tex: "(This section is required and does not count toward the page limit.)"'
+        - name: Ethics statement
+          status: recommended
+          pattern: '\\(sub)?section\*?\{[^}]*Ethics statement[^}]*\}'
+          counts_toward_limit: false
+          placement: before_bibliography
+          source: 'template .tex: "(This section is recommended and does not count toward the page limit.)" max 1 page'
+        - name: Reproducibility statement
+          status: recommended
+          pattern: '\\(sub)?section\*?\{[^}]*Reproducibility statement[^}]*\}'
+          counts_toward_limit: false
+          placement: before_bibliography
+          source: 'template .tex: "(This section is recommended and does not count toward the page limit.)"'
+      captions:
+        figure: below
+        table: above
+        source: 'template .tex: "The figure number and caption always appear after the figure" / "The table number and title always appear before the table"'
+      paper_size: letter
+      forbidden_packages: []
+      forbidden_commands: []
+      anonymity: 'desk reject if author identity is revealed in main text or supplementary material; own arXiv work must be cited in third person'
+      references_page: 'no rule; the official sample places \bibliography directly after the last section without a page break'
+      title_freeze: 'no title changes after the submission deadline until end of discussion'
+      supplementary: appendix goes after the bibliography inside the same PDF; reviewers not required to read it
+
+  neurips2026:
+    name: NeurIPS 2026
+    kind: conference
+    official:
+      author_guidelines: https://neurips.cc/Conferences/2026/MainTrackHandbook
+      call_for_papers: https://neurips.cc/Conferences/2026/CallForPapers
+      template_zip: https://media.neurips.cc/Conferences/NeurIPS2026/Formatting_Instructions_For_NeurIPS_2026.zip
+      template_zip_sha256: 82473931e3ef710fcd3f4a8cd4119b9de32e56825f90f9e5a6d55f2d01b817d9
+      verified_on: 2026-09-23
+      bundled_copy: assets/templates/neurips2026/Formatting_Instructions_For_NeurIPS_2026.zip
+    layout:
+      columns: 1
+      text_width_in: 5.5
+      column_width_in: 5.5
+      text_height_in: 9.0
+      source: 'neurips_2026.sty: geometry textwidth=5.5in, textheight=9in, letterpaper'
+    template:
+      root_in_zip: ''
+      files:
+        checklist.tex: 780ba13c480f652dcc42e69ed61a752ce0ea270f15d332d4a45b059dabad84f6
+        neurips_2026.sty: c3fc2894e83d2517ca18b66741d6c595986d97957dc08ec08bb2125a7ec4555a
+        neurips_2026.tex: cf4cee7991665306d1daaa3985be4feec7f8889d6d072ffa12f99a8e1537d797
+      needed_in_project: [neurips_2026.sty]
+      optional_in_project: [checklist.tex]     # the mandatory checklist source; authors fill it
+      documentclass: '\documentclass{article}'
+      style_line: '\usepackage{neurips_2026}'
+      style_line_by_stage: {submission: '\usepackage{neurips_2026}', rebuttal: '\usepackage{neurips_2026}', camera_ready: '\usepackage[final]{neurips_2026}'}
+      packages_after_style: [hyperref, url]
+      preamble_extras: ['\usepackage[T1]{fontenc} % paper-migrate: as in the official sample']
+      bibliographystyle: 'author choice (no .bst shipped)'
+      bibliographystyle_default: plainnat
+      citation_style: authoryear
+      style_loads: [natbib, geometry, lineno, environ]
+      natbib_loaded_by_style: true
+      section_numbering: numbered
+      author_block: '\author{Name \\ Department \\ University \\ \texttt{email} \And Name2 ...}  (as in neurips_2026.tex)'
+      venue_macros: []
+      anonymization:
+        mechanism: 'anonymous by default (no option); final adds authors; preprint / nonanonymous also de-anonymise'
+        submission:   {must_not_match: '\\usepackage\[[^\]]*(final|preprint|nonanonymous)[^\]]*\]\{neurips_2026\}'}
+        rebuttal:     {must_not_match: '\\usepackage\[[^\]]*(final|preprint|nonanonymous)[^\]]*\]\{neurips_2026\}'}
+        camera_ready: {must_match: '\\usepackage\[[^\]]*final[^\]]*\]\{neurips_2026\}'}
+    rules:
+      page_limit:
+        submission: 9
+        camera_ready: 10
+        counts: main text including all figures and tables
+        excluded: [references, technical appendices, paper checklist, acknowledgments]
+        source: 'MainTrackHandbook 2026-09-23: "The main text of a submitted paper is limited to nine content pages, including all figures and tables." "Additional pages containing references, optional technical appendices and mandatory paper checklist do not count as content pages." Camera-ready 10: TODO_CONFIRM'
+      required_sections:
+        - name: NeurIPS Paper Checklist
+          status: required
+          pattern: 'Paper Checklist|\\input\{checklist\}'
+          counts_toward_limit: false
+          placement: end_of_document
+          source: 'MainTrackHandbook: "authors are required to complete the paper checklist included in the paper template"; checklist.tex: "Do not remove the checklist: The papers not including the checklist will be desk rejected." "The checklist should follow the references and follow the (optional) supplemental material."'
+      captions:
+        figure: below
+        table: above
+        source: 'neurips_2026.tex: "The figure number and caption always appear after the figure" / "The table number and title always appear before the table"'
+      paper_size: letter
+      fonts: 'neurips_2026.tex: "Your PDF file must only contain Type 1 or Embedded TrueType fonts."'
+      forbidden_packages: []
+      forbidden_commands: []
+      anonymity: 'MainTrackHandbook: "All submissions must be anonymized and may not contain any identifying information that may violate the double-blind reviewing policy." Cite own work in third person.'
+      references_page: 'no rule; references follow the main text, appendices and checklist follow the references'
+      llm_use: 'MainTrackHandbook: "The use of agents and/or LLMs in implementing the method should be described in the experimental setup section (or equivalent) if it is an important, original, or non-standard component of the approach."'
+
+  acl2026:
+    name: ACL (ARR-based *ACL venues, acl.sty 2026)
+    kind: conference
+    official:
+      author_guidelines: https://acl-org.github.io/ACLPUB/formatting.html
+      call_for_papers: TODO_CONFIRM   # the specific *ACL venue's CFP (ACL / EMNLP / NAACL year)
+      template_repo: https://github.com/acl-org/acl-style-files   # official channel; clone, do not download from Overleaf
+      template_commit: d5adc82 (2026-06-29)
+      template_zip: null
+      template_zip_sha256: null
+      verified_on: 2026-09-23
+      bundled_copy: null
+    layout:
+      columns: 2
+      text_width_in: 6.30       # A4 21.0cm - 2 x 2.5cm margin = 16.0cm
+      column_width_in: 3.03     # (16.0cm - 0.6cm columnsep) / 2
+      text_height_in: 9.72      # 29.7cm - 5.0cm
+      source: 'acl.sty: \PassOptionsToPackage{a4paper,margin=2.5cm}{geometry}, \setlength\columnsep{0.6cm}'
+    template:
+      root_in_zip: ''
+      files:
+        acl.sty: 19dfeddc2c0e448f3926a0bef048a9db3f3611b46265b760caabd7ada4f361de
+        acl_latex.tex: 339c9ee9705c1767d44ef24b85365c0bb8619ecc3fcf66172bf1356292389614
+        acl_lualatex.tex: 0d9987ba833331a996f9abcd1a03eebba7d7ae331145793e7ddb6b5ae8db27b3
+        acl_natbib.bst: 6fbb306202290f4b68e74ac1460a8b27398500cb6dfeb4492e74c457eae7cd1e
+      needed_in_project: [acl.sty, acl_natbib.bst]
+      documentclass: '\documentclass[11pt]{article}'
+      style_line: '\usepackage[review]{acl}'
+      style_line_by_stage: {submission: '\usepackage[review]{acl}', rebuttal: '\usepackage[review]{acl}', camera_ready: '\usepackage[final]{acl}'}
+      packages_after_style: [times, latexsym, microtype]
+      preamble_extras: ['\usepackage[T1]{fontenc} % paper-migrate: as in acl_latex.tex']
+      bibliographystyle: set by the style file (acl_natbib)
+      citation_style: authoryear
+      style_loads: [natbib, hyperref, url, xcolor, caption, geometry, lineno, etoolbox]
+      natbib_loaded_by_style: true
+      section_numbering: numbered
+      author_block: '\author{First Author \\ Affiliation \\ \texttt{email} \And Second Author ...}  (as in acl_latex.tex)'
+      venue_macros: []
+      anonymization:
+        mechanism: '[review] anonymises and adds line numbers; [final] shows authors; [preprint] shows authors without line numbers'
+        submission:   {must_match: '\\usepackage\[[^\]]*review[^\]]*\]\{acl\}'}
+        rebuttal:     {must_match: '\\usepackage\[[^\]]*review[^\]]*\]\{acl\}'}
+        camera_ready: {must_match: '\\usepackage\[[^\]]*final[^\]]*\]\{acl\}'}
+    rules:
+      page_limit:
+        submission: 8              # long paper; short papers 4 -- TODO_CONFIRM on the venue CFP
+        camera_ready: 9            # long paper +1 -- TODO_CONFIRM
+        counts: main text including figures and tables
+        excluded: [references, appendices, Limitations section, ethics statement]
+        source: 'TODO_CONFIRM against the specific *ACL venue CFP (ARR standard: long 8 / short 4 content pages; Limitations, ethics and references do not count)'
+      required_sections:
+        - name: Limitations
+          status: required
+          pattern: '\\section\*?\{Limitations\}'
+          counts_toward_limit: false
+          placement: before_bibliography
+          source: 'acl_latex.tex: "Check the author instructions for information on maximum page lengths, the required ``Limitations'' section"; ARR CFP: mandatory Limitations section'
+      captions:
+        figure: TODO_CONFIRM
+        table: TODO_CONFIRM
+        source: 'acl_latex.tex only says "Do not override the default caption sizes."; ACLPUB formatting page: TODO_CONFIRM'
+      paper_size: a4
+      forbidden_packages: []
+      forbidden_commands: []
+      anonymity: 'review mode hides authors; self-citations in third person; no acknowledgements in the review version'
+      references_page: 'no rule; \bibliography follows the last section, appendices follow the references (acl_latex.tex)'
+
+  aaai2027:
+    name: AAAI-27
+    kind: conference
+    official:
+      author_kit: https://aaai.org/authorkit27/
+      submission_instructions: https://aaai.org/conference/aaai/aaai-27/submission-instructions/
+      main_track_call: https://aaai.org/conference/aaai/aaai-27/main-technical-track-call/
+      template_zip: null                         # kit page does not expose a direct zip URL (checked 2026-09-23)
+      template_zip_sha256: null
+      verified_on: 2026-09-23
+      bundled_copy: null                         # not redistributed here; download from the author kit page
+    layout:
+      columns: 2
+      text_width_in: 7.0
+      column_width_in: 3.3125      # (7.0 - 0.375 columnsep) / 2
+      text_height_in: 9.0
+      source: 'aaai2027.sty: \setlength\textwidth{7.0in} \setlength\columnsep{0.375in} \setlength\textheight{9.0in}'
+    template:
+      files:                       # sha256 observed in the user's local kit copy (2026-09-23); not verified against an official archive
+        aaai2027.sty: 391bce82815bf698b8e382dd3ae7e30c75d7ab46df140cb295b1266016bc8623
+        aaai2027.bst: 5db7765ba99de5c1e4686f9b3940a0add9c5e702f2164514462bec130ccb6e3c
+      needed_in_project: [aaai2027.sty, aaai2027.bst]
+      documentclass: '\documentclass[letterpaper]{article}'
+      style_line: '\usepackage[submission]{aaai2027}'
+      style_line_by_stage: {submission: '\usepackage[submission]{aaai2027}', camera_ready: '\usepackage{aaai2027}'}
+      packages_after_style: []
+      preamble_extras: ['\usepackage[hyphens]{url}  % DO NOT CHANGE THIS', '\usepackage{graphicx} % DO NOT CHANGE THIS', '\urlstyle{rm} % DO NOT CHANGE THIS', '\def\UrlFont{\rm}  % DO NOT CHANGE THIS', '\usepackage{natbib}  % DO NOT CHANGE THIS AND DO NOT ADD ANY OPTIONS TO IT', '\usepackage{caption} % DO NOT CHANGE THIS AND DO NOT ADD ANY OPTIONS TO IT', '\frenchspacing  % DO NOT CHANGE THIS', '\pdfinfo{ /TemplateVersion (2027.1) }', '\setcounter{secnumdepth}{0}']
+      mandatory_preamble: ['\usepackage[hyphens]{url}', '\usepackage{graphicx}', '\urlstyle{rm}', '\def\UrlFont{\rm}', '\usepackage{natbib}', '\usepackage{caption}', '\frenchspacing', '\pdfinfo{']
+      bibliographystyle: set by the style file (aaai2027.bst)
+      citation_style: authoryear
+      style_loads: [newtxtext, helvet, courier, fontenc, xcolor, placeins, iftex]
+      natbib_loaded_by_style: false
+      section_numbering: unnumbered
+      author_block: '\author{Name\textsuperscript{\rm 1}\quad Name2\textsuperscript{\rm 2}} plus \affiliations{\textsuperscript{\rm 1}Affil ... emails}'
+      venue_macros: [affiliations, corresponding, equalcontrib, nocopyright]
+      venue_macro_map:
+        corresponding: '\thanks{Corresponding author.}'
+        equalcontrib: '\thanks{These authors contributed equally.}'
+      anonymization:
+        mechanism: '[submission] option hides authors and affiliations'
+        submission:   {must_match: '\\usepackage\[submission\]\{aaai2027\}'}
+        camera_ready: {must_not_match: '\\usepackage\[submission\]\{aaai2027\}'}
+      engine: pdflatex only (\pdfinfo is a pdfTeX primitive; XeTeX/tectonic fails)
+    rules:
+      page_limit:
+        submission: 7
+        reference_pages: 2
+        counts: 'pages 1-7 content (ethics statements, if any, inside the 7); pages 8-9 references only'
+        source: 'Submission Instructions 2026-09-23: "main submission PDF can have up to 9 pages, with pages 8-9 reserved exclusively for references ... up to 7 pages of non-references content"'
+      required_sections: []
+      required_extras:
+        - name: Reproducibility checklist
+          status: required
+          form: separate upload per Author Kit (checklist.tex in kit; standalone or \input)
+      captions: {figure: TODO_CONFIRM, table: TODO_CONFIRM, source: 'not stated in the kit sample; TODO_CONFIRM in the AAAI formatting guide'}
+      paper_size: letter
+      fonts: 'Type 1 or TrueType fonts'
+      forbidden_packages: [authblk, balance, CJK, float, flushend, fullpage, geometry, hyperref, navigator, indentfirst, layout, multicol, nameref, savetrees, setspace, stfloats, tabu, titlesec, tocbibind, ulem, wrapfig]
+      forbidden_commands: [nocopyright, addtolength, balance, baselinestretch, clearpage, columnsep, newpage, pagebreak, pagestyle, tiny, 'vspace{-', 'vskip{-']
+      acknowledgements: omitted at submission
+      anonymity: 'remove all author and affiliation information; may replace with paper number and keywords'
+      references_page: 'pages 8-9 are reserved for references; content must end by page 7'
+
+migrations:
+  aaai2027->iclr2027:
+    notes: references/aaai2027-to-iclr2027.md      # worked example; rules are generated by make_rules.py

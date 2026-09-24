@@ -1,0 +1,101 @@
+\documentclass[letterpaper]{article} % DO NOT CHANGE THIS
+\usepackage[submission]{aaai2027}  % DO NOT CHANGE THIS
+\usepackage[hyphens]{url}
+\usepackage{graphicx}
+\urlstyle{rm}
+\def\UrlFont{\rm}
+\usepackage{natbib}
+\usepackage{caption}
+\frenchspacing
+\usepackage{amsmath, booktabs}
+\newtheorem{theorem}{Theorem}
+\newcommand{\method}{\textsc{Toy}}
+\pdfinfo{
+/TemplateVersion (2027.1)
+}
+\setcounter{secnumdepth}{0}
+\title{A Toy Paper for Testing Template Migration}
+\author{
+    Ada Lovelace\textsuperscript{\rm 1}\quad
+    Alan Turing\textsuperscript{\rm 2}\corresponding
+}
+\affiliations {
+    \textsuperscript{\rm 1}Analytical Engine Institute, London\quad
+    \textsuperscript{\rm 2}Bletchley Park, Milton Keynes\\
+    ada@example.org, alan@example.org
+}
+\begin{document}
+\maketitle
+\begin{abstract}
+We study a toy forecasting problem and report that \method{} reduces error from 41.2\% to 17.5\% on a synthetic benchmark.
+\end{abstract}
+
+\section{Introduction}
+\label{sec:intro}
+Prior work studied this problem~\cite{smith2020,doe2021}. As shown in Fig.~\ref{fig:plot}, the effect is large. % a comment with \newpage inside
+We contribute a method and a benchmark. The benchmark consists of synthetic time series generated from a small family of seasonal patterns with additive noise, each paired with a forecasting horizon and a set of held-out continuations. We evaluate several forecasting models on these series and observe that their errors grow quickly once the horizon exceeds the length of a single season, even when the underlying pattern repeats exactly. This observation motivates a training objective that encourages predictions to respect the periodic structure of the input while keeping the usual pointwise loss, and we show that the objective lowers the long-horizon error without hurting the short-horizon accuracy across all pattern families and both model sizes that we study in this paper.
+
+Fig.~\ref{fig:time} reports the wall-clock cost of the method, which stays close to the baseline because the additional loss term reuses the forward pass already needed for the pointwise loss. The remaining overhead comes from computing the seasonal alignment, which we cache across epochs; in practice the training time grows by less than a fifth on the largest configuration, and inference is unchanged since the method only alters training.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.9\columnwidth]{figures/plot.png}
+  \caption{Error versus training steps.}
+  \label{fig:plot}
+\end{figure}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.3\textwidth]{figures/plot.png}
+  \caption{Time versus training steps.}
+  \label{fig:time}
+\end{figure}
+
+\begin{figure*}[!t]
+\centering
+  \includegraphics[width=0.8\textwidth]{figures/plot.png}
+\caption{Overview of \method{}. Two panels are shown.}
+\label{fig:overview}
+\end{figure*}
+
+\section{Method}
+\begin{theorem}
+For any $x \in \mathbb{R}$, $f(x) \le g(x)$.
+\end{theorem}
+\begin{proof}
+Immediate from the definition~\shortcite{doe2021}.
+\end{proof}
+
+\section{Experiments}
+Table~\ref{tab:main} reports the main results. The baseline is trained with the standard pointwise loss on the same series, uses the same network and the same number of epochs, and is evaluated with the same horizon, so that the only difference between the two rows is the additional loss term. Error is measured on the held-out continuations and averaged over three seeds; the time column reports wall-clock seconds per training step on a single accelerator. The method reduces the error by more than half while adding about twenty percent to the step time, which comes from the seasonal alignment, and we did not observe any instability during training in any of the runs that we performed for this comparison.
+
+\begin{table*}[t]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\resizebox{\textwidth}{!}{
+\begin{tabular}{lcc}
+\toprule
+Method & Error (\%) & Time (s) \\
+\midrule
+Baseline & 41.2 & 1.0 \\
+\method{} & 17.5 & 1.2 \\
+\bottomrule
+\end{tabular}
+}
+\caption{Main results on the synthetic benchmark.}
+\label{tab:main}
+\end{table*}
+
+\section{Conclusion}
+We conclude.
+
+\newpage
+\bibliography{refs}
+
+\clearpage
+\appendix
+\section{Appendix}
+\subsection{Extra Results}
+More numbers: 3.14, 2.71.
+\end{document}
