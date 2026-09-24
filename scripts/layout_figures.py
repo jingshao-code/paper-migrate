@@ -217,10 +217,10 @@ def scan(text: str, geo: Geometry) -> list[Graphic]:
     def width_of_float(flt) -> float:
         if flt is None:
             return geo.text_width_in
+        if flt["env"] in ("wrapfigure", "wraptable") and flt.get("width_in"):
+            return flt["width_in"]                      # the wrap box, whatever the column model
         if flt["env"] in FLOATS_WIDE or geo.columns == 1:
             return geo.text_width_in
-        if flt["env"] in ("wrapfigure", "wraptable") and flt.get("width_in"):
-            return flt["width_in"]
         return geo.column_width_in
 
     def flush_graphics_before(pos: int):
@@ -316,7 +316,7 @@ def _caption_groups(cblock: str) -> list[tuple[int, int, str, str | None]]:
     return out
 
 
-def _float_items(text: str, label: str, dst_text_in: float, table_max_frac: float = 0.6) -> tuple[tuple[int, int, str] | None, list[dict]]:
+def _float_items(text: str, label: str, dst_text_in: float, table_max_frac: float = 0.6, geo: "Geometry | None" = None) -> tuple[tuple[int, int, str] | None, list[dict]]:
     """Split the float that holds `label` into items {label, caption, material, frac, prefix}."""
     b = figure_block_with_label(text, label, envs="figure|table")
     if not b:
@@ -339,8 +339,10 @@ def _float_items(text: str, label: str, dst_text_in: float, table_max_frac: floa
             mat = mat[:a] + mat[z:]
         g = GRAPHIC_RE.search(cinner)
         we = parse_width(g.group(1) or "") if g else None
-        mm = re.fullmatch(r"([0-9.]+)?\\linewidth", (we or "").replace(" ", ""))
+        mm = re.fullmatch(r"([0-9.]+)?\\(linewidth|columnwidth|textwidth)", (we or "").replace(" ", ""))
         frac = float(mm.group(1)) if mm and mm.group(1) else 1.0
+        if mm and mm.group(2) == "columnwidth" and geo is not None and geo.columns == 2:
+            frac = frac * geo.column_width_in / dst_text_in          # express as a fraction of the text width
         mat = GRAPHIC_RE.sub(_relative_graphic, mat, count=1)
         cap = next((c for c in caps if c[3] == label), caps[0] if caps else (0, 0, "", None))
         items.append({"env": "figure", "label": label, "caption": cap[2], "material": mat.strip("\n"), "frac": frac, "prefix": ""})
@@ -375,13 +377,13 @@ def _float_items(text: str, label: str, dst_text_in: float, table_max_frac: floa
 
 
 def pair_floats(text: str, labels: list[str], dst_text_in: float, gap: float, placement: str | None,
-                table_captions: str | None, mode: str = "subfloats") -> tuple[str, dict]:
+                table_captions: str | None, mode: str = "subfloats", geo: "Geometry | None" = None) -> tuple[str, dict]:
     """Combine the floats (or the sub-tables of one float) named by `labels` into one float."""
     info: dict = {"labels": labels, "mode": mode, "status": "refused"}
     blocks: dict[tuple[int, int, str], list[dict]] = {}
     order: list[tuple[int, int, str]] = []
     for lab in labels:
-        b, items = _float_items(text, lab, dst_text_in)
+        b, items = _float_items(text, lab, dst_text_in, geo=geo)
         if not b:
             info["reason"] = f"no figure/table block directly contains \\label{{{lab}}}"
             return text, info
@@ -418,7 +420,14 @@ def pair_floats(text: str, labels: list[str], dst_text_in: float, gap: float, pl
     if len(items) < 2:
         info["reason"] = "fewer than two items found"
         return text, info
-    fracs = [it["frac"] for it in items]
+    fracs = [it["frac"] for it in items]                       # fractions of the text width
+    float_env = base
+    if geo is not None and geo.columns == 2:
+        total_in = sum(f * dst_text_in for f in fracs)
+        if total_in <= geo.column_width_in * 1.02:
+            fracs = [f * dst_text_in / geo.column_width_in for f in fracs]   # relative to the column
+        else:
+            float_env = base + "*"                                            # spans both columns
     scale = min(1.0, (1.0 - gap * (len(items) - 1)) / sum(fracs))
     fracs = [f * scale for f in fracs]
     plac = f"[{placement}]" if placement else "[t]"
@@ -438,11 +447,11 @@ def pair_floats(text: str, labels: list[str], dst_text_in: float, gap: float, pl
         boxes.append(f"\\begin{{{sub_env}}}[t]{{{fmt_frac(fr)}\\linewidth}}\n\\centering\n{inner}\n\\end{{{sub_env}}}")
     main_cap = "\\caption{" + " ".join(f"\\subref{{{it['label']}}} {it['caption']}" for it in items) + "}"
     head = (f"% paper-migrate layout: {len(items)} {base}s combined into one float with sub-captions; the original caption texts are kept verbatim after their \\subref markers, "
-            f"and \\ref{{<label>}} now renders as e.g. 3a\n\\begin{{{base}}}{plac}\n\\centering\n")
+            f"and \\ref{{<label>}} now renders as e.g. 3a\n\\begin{{{float_env}}}{plac}\n\\centering\n")
     if base == "table" and (table_captions or "above") == "above":
-        merged = head + main_cap + "\n" + "\\hfill\n".join(boxes) + f"\n\\end{{{base}}}"
+        merged = head + main_cap + "\n" + "\\hfill\n".join(boxes) + f"\n\\end{{{float_env}}}"
     else:
-        merged = head + "\\hfill\n".join(boxes) + "\n" + main_cap + f"\n\\end{{{base}}}"
+        merged = head + "\\hfill\n".join(boxes) + "\n" + main_cap + f"\n\\end{{{float_env}}}"
     if mode == "minipage":
         boxes = []
         for it, fr in zip(items, fracs):
@@ -451,7 +460,7 @@ def pair_floats(text: str, labels: list[str], dst_text_in: float, gap: float, pl
             inner = (cap + "\n" + body) if (base == "table" and (table_captions or "above") == "above") else (body + "\n" + cap)
             boxes.append(f"\\begin{{minipage}}[t]{{{fmt_frac(fr)}\\linewidth}}\n\\centering\n{inner}\n\\end{{minipage}}")
         merged = (f"% paper-migrate layout: floats placed side by side; each keeps its own caption and label\n"
-                  f"\\begin{{{base}}}{plac}\n\\centering\n" + "\\hfill\n".join(boxes) + f"\n\\end{{{base}}}")
+                  f"\\begin{{{float_env}}}{plac}\n\\centering\n" + "\\hfill\n".join(boxes) + f"\n\\end{{{float_env}}}")
     # remove later blocks (from the end), then replace the first block with the merged one
     for bs, be, _ in sorted(order[1:], key=lambda b: -b[0]):
         tail = text[be:]
@@ -460,7 +469,7 @@ def pair_floats(text: str, labels: list[str], dst_text_in: float, gap: float, pl
     first = order[0]
     b = figure_block_with_label(text, items[0]["label"], envs="figure|table")
     text = text[:b[0]] + merged + text[b[1]:]
-    info.update({"status": "paired", "env": base, "fracs": [round(f, 3) for f in fracs], "scaled_by": round(scale, 3),
+    info.update({"status": "paired", "env": float_env, "fracs": [round(f, 3) for f in fracs], "scaled_by": round(scale, 3),
                  "items": [it["label"] for it in items], "same_block": len(order) == 1})
     return text, info
 
@@ -1068,7 +1077,7 @@ def main() -> int:
                 raise ValueError("text width unknown: give --*-venue or --*-text-width")
             return Geometry(tw, cw or tw, cols or 1, th)
         src_geo = geo_from(args.src_venue, args.src_text_width, args.src_column_width, args.src_columns)
-        dst_geo = geo_from(args.dst_venue, args.dst_text_width, None, 1)
+        dst_geo = geo_from(args.dst_venue, args.dst_text_width, None, None)
         src_text = Path(args.src).read_text(encoding="utf-8")
         text = Path(args.inp).read_text(encoding="utf-8")
         out = Path(args.out)
@@ -1099,9 +1108,19 @@ def main() -> int:
         return 2
 
     DW = dst_geo.text_width_in
+    CW = dst_geo.column_width_in
+    two_col = dst_geo.columns == 2
     rows = []
     edits: list[tuple[int, int, str]] = []          # (start, end, replacement) on `text`
     container_done: set[tuple[int, int]] = set()
+    env_wanted: dict[tuple[int, int], bool] = {}    # dst float span -> starred?
+    # total physical width per dst float (containers side by side share one row)
+    float_total: dict[int, float] = {}
+    for s, d in zip(src_g, dst_g):
+        if d.float_span and s.phys_in is not None:
+            key = d.float_span[0]
+            width = s.container_phys_in if (d.container and s.container_phys_in) else s.phys_in
+            float_total[key] = float_total.get(key, 0.0) + width
     for s, d in zip(src_g, dst_g):
         row = {"idx": d.idx, "file": Path(d.file).name, "src_float": s.float_env, "src_container": s.container,
                "src_width_expr": s.width_expr, "src_phys_in": s.phys_in, "action": ""}
@@ -1109,8 +1128,16 @@ def main() -> int:
             row["action"] = s.note or "unchanged"
             rows.append(row)
             continue
+        base = DW
+        base_name = "\\linewidth"
+        if two_col and d.float_span:
+            total = float_total.get(d.float_span[0], s.phys_in)
+            starred = total > CW * 1.02
+            env_wanted[d.float_span] = starred
+            base = DW if starred else CW
+            base_name = "\\textwidth" if starred else "\\columnwidth"
         if d.container and d.container_width_span and s.container_phys_in:
-            frac = min(s.container_phys_in / DW, args.max_frac)
+            frac = min(s.container_phys_in / base, args.max_frac)
             enlarged = ""
             if args.min_frac and frac < args.min_frac:
                 if fmt_frac(frac) != fmt_frac(args.min_frac):
@@ -1123,25 +1150,69 @@ def main() -> int:
             new_opts = replace_width_opt(d.opts, f"{fmt_frac(min(inner, 1.0))}\\linewidth")
             edits.append((d.span[0], d.span[1], f"\\includegraphics{new_opts}{{{d.file}}}"))
             row["action"] = (f"container {d.container} -> {fmt_frac(frac)}\\linewidth ({s.container_phys_in:.2f}in), "
-                             f"inner {fmt_frac(min(inner,1.0))}\\linewidth{enlarged}")
+                             f"inner {fmt_frac(min(inner,1.0))}\\linewidth{enlarged}"
+                             + (f"; float {'spans both columns (figure*)' if env_wanted.get(d.float_span) else 'stays in one column'}" if two_col else ""))
             row["dst_frac"] = round(frac, 3)
         else:
-            frac = s.phys_in / DW
+            frac = s.phys_in / base
             note = ""
             if frac > args.max_frac:
                 frac, note = args.max_frac, " (capped)"
             if args.min_frac and frac < args.min_frac and fmt_frac(frac) != fmt_frac(args.min_frac):
-                frac, note = args.min_frac, f" (enlarged from {fmt_frac(s.phys_in / DW)})"
+                frac, note = args.min_frac, f" (enlarged from {fmt_frac(s.phys_in / base)})"
             elif args.min_frac and frac < args.min_frac:
                 frac = args.min_frac
-            new_opts = replace_width_opt(d.opts, f"{fmt_frac(frac)}\\linewidth")
+            new_opts = replace_width_opt(d.opts, f"{fmt_frac(frac)}{base_name}")
             edits.append((d.span[0], d.span[1], f"\\includegraphics{new_opts}{{{d.file}}}"))
-            row["action"] = f"{s.width_expr} = {s.phys_in:.2f}in -> {fmt_frac(frac)}\\linewidth{note}"
+            row["action"] = f"{s.width_expr} = {s.phys_in:.2f}in -> {fmt_frac(frac)}{base_name}{note}" + \
+                            (f" ({'figure*' if env_wanted.get(d.float_span) else 'single column'})" if two_col and d.float_span else "")
             row["dst_frac"] = round(frac, 3)
         rows.append(row)
 
+    # two-column target: star or un-star each figure float according to its physical width
+    env_changes = 0
+    if two_col:
+        for span, starred in env_wanted.items():
+            start, end = span
+            if end is None:
+                continue
+            mb = re.match(r"\\begin\s*\{(figure\*?)\}", text[start:])
+            me = re.search(r"\\end\s*\{(figure\*?)\}\s*$", text[start:end])
+            if not mb or not me:
+                continue
+            want = "figure*" if starred else "figure"
+            if mb.group(1) != want:
+                edits.append((start, start + mb.end(), f"\\begin{{{want}}}"))
+                edits.append((start + me.start(), start + me.end(), f"\\end{{{want}}}"))
+                env_changes += 1
+
     for start, end, rep in sorted(edits, key=lambda e: -e[0]):
         text = text[:start] + rep + text[end:]
+
+    table_env_changes = 0
+    unwrapped = 0
+    if two_col:
+        # wrapped floats do not belong in a two-column layout: back to ordinary floats
+        text, n1 = re.subn(r"\\begin\s*\{wrapfigure\}\s*(\[[^\]]*\])?\s*\{[^}]*\}\s*\{[^}]*\}", lambda _m: "\\begin{figure}[t]", text)
+        text, n2 = re.subn(r"\\end\s*\{wrapfigure\}", lambda _m: "\\end{figure}", text)
+        text, n3 = re.subn(r"\\begin\s*\{wraptable\}\s*(\[[^\]]*\])?\s*\{[^}]*\}\s*\{[^}]*\}", lambda _m: "\\begin{table}[t]", text)
+        text, n4 = re.subn(r"\\end\s*\{wraptable\}", lambda _m: "\\end{table}", text)
+        unwrapped = n1 + n3
+        # tables: span both columns when the estimated natural width exceeds the column
+        clean = strip_comments_keep_len(text)
+        spans = []
+        for m in re.finditer(r"\\begin\s*\{(table\*?)\}", clean):
+            e = re.compile(r"\\end\s*\{" + re.escape(m.group(1)) + r"\}").search(clean, m.end())
+            if e:
+                spans.append((m.start(), e.start(), e.end(), m.group(1)))
+        for bs, es, ee, env in sorted(spans, key=lambda x: -x[0]):
+            est = estimate_table(clean[bs:ee], DW)
+            if est["width_pt"] is None:
+                continue
+            want = "table*" if est["width_pt"] > CW * 72.27 * 1.02 else "table"
+            if want != env:
+                text = text[:bs] + f"\\begin{{{want}}}" + text[bs + len(f"\\begin{{{env}}}"):es] + f"\\end{{{want}}}" + text[ee:]
+                table_env_changes += 1
 
     # ---- placement -------------------------------------------------------- #
     placement_n = 0
@@ -1152,7 +1223,7 @@ def main() -> int:
     pairs_done = []
     for spec in args.pair:
         labels = [x.strip() for x in spec.split(",") if x.strip()]
-        text, pinfo = pair_floats(text, labels, DW, args.pair_gap, args.placement, args.table_captions, args.pair_mode)
+        text, pinfo = pair_floats(text, labels, DW, args.pair_gap, args.placement, args.table_captions, args.pair_mode, dst_geo)
         pairs_done.append(pinfo)
         if pinfo["status"] != "paired":
             print(f"layout_figures: --pair {spec}: {pinfo.get('reason')}", file=sys.stderr)
@@ -1173,6 +1244,10 @@ def main() -> int:
             k, v = spec.split("@", 1)
             anchors[k.strip()] = v
     for spec in args.wrap:
+        if two_col:
+            wraps_done.append({"label": spec.split("@")[0], "side": "r", "status": "refused",
+                               "reason": "two-column target: text wrapping is not used; the float keeps its column"})
+            continue
         text, info = wrap_float(text, spec, anchors, Path(args.inp).resolve().parent, DW, args.wrap_max, args.wrap_max_table, dst_geo.text_height_in)
         wraps_done.append(info)
     fits_done = []
@@ -1198,6 +1273,8 @@ def main() -> int:
         print(f"{r['idx']:>2} {r['file']:<26} {ctx:<22} {r['action']}")
     if placement_n:
         print(f"placement       {placement_n} figure environment(s) set to [{args.placement}]")
+    if two_col:
+        print(f"two columns     {env_changes} figure float(s) starred/un-starred by physical width, {table_env_changes} table float(s), {unwrapped} wrapped float(s) turned back into ordinary floats")
     for p in pairs_done:
         if p["status"] == "paired":
             print(f"paired          {p['items']} -> one {p['env']} ({p['mode']}), widths {[fmt_frac(f) for f in p['fracs']]}\\linewidth"
@@ -1226,6 +1303,7 @@ def main() -> int:
         Path(args.report).write_text(json.dumps({"rows": rows, "pairs": pairs_done, "wraps": wraps_done, "placement": placement_n,
                                                   "table_captions": {"where": args.table_captions, "moved": captions_moved},
                                                   "fits": fits_done,
+                                                  "two_column_target": {"figure_env_changes": env_changes, "table_env_changes": table_env_changes, "unwrapped": unwrapped} if two_col else None,
                                                   "src_geometry": src_geo.__dict__, "dst_geometry": dst_geo.__dict__},
                                                  indent=2) + "\n", encoding="utf-8")
     return 0

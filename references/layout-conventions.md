@@ -52,6 +52,17 @@ runs `\bibliography` directly after the last section. Author-inserted `\newpage`
 references is dropped by the AAAI->ICLR rules (see `why` in the JSON); remove that op to keep
 it. The appendix follows the references in the same PDF.
 
+## Two-column targets (AAAI, ACL, CVPR, ...)
+
+11. **Column or span, by physical width.** A graphic narrower than the target column keeps its
+    size in a `figure` sized in `\columnwidth`; a wider one becomes `figure*` sized in
+    `\textwidth`, capped at the text width. Sub-figure groups are judged by their combined width.
+    Tables switch between `table` and `table*` by their estimated natural width.
+12. **No wrapping.** Wrapped floats from a single-column source become ordinary floats; text
+    wrapping is not used in two-column layouts.
+13. **Pairing** still combines neighbours; the combined float spans both columns only when the
+    two widths do not fit in one column.
+
 ## Page count
 
 The migration never targets the venue's page limit. Sizing floats correctly (rules 1-6) is about

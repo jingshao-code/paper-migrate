@@ -67,7 +67,7 @@ python3 scripts/draft_preamble.py --src <orig>/main.tex --src-venue <src> --dst-
 python3 scripts/migrate_tex.py --in <orig>/main.tex --out <new>/main.tex --rules <report>/rules.json \
         --preamble <report>/preamble.tex [--replace 'OLD=NEW']   # paper-specific path fixes only
 ```
-Rules come from the two venue entries (column model, citation style, bibliography style, required-section TODOs). A pair-specific `references/<src>-to-<dst>.json` may add ops via `--override`. Anything outside the rules: ask whether it is a content change; if yes, stop and report.
+Rules come from the two venue entries (column model, citation style, bibliography style, required-section TODOs), so any registered pair works in either direction. A pair-specific JSON may add ops via `--override` when a venue has an oddity. Anything outside the rules: ask whether it is a content change; if yes, stop and report.
 
 **4. Layout pass.**
 ```
@@ -132,5 +132,4 @@ The report opens with **Author to-do** (page count vs. limit, missing required s
 - `scripts/make_report.py` - assembles `MIGRATION_REPORT.md`.
 - `references/layout-conventions.md` - layout conventions for single- and two-column ML templates.
 - `references/venue-checklist.md` - what to read in a new venue's template and CFP, and where each `venues.yaml` field comes from.
-- `references/aaai2027-to-iclr2027.md` - worked example of a venue pair.
 - `tests/run_tests.py` - end-to-end tests on a synthetic paper.

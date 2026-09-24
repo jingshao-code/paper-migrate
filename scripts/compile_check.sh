@@ -53,7 +53,7 @@ echo "pages          ${pages:-unknown}"
 if command -v pdftotext >/dev/null 2>&1 && [ -n "$pages" ]; then
   refpage=""; apppage=""
   for p in $(seq 1 "$pages"); do
-    t="$(pdftotext -f "$p" -l "$p" -layout "$pdf" - 2>/dev/null | tr -s ' ')"
+    t="$(pdftotext -f "$p" -l "$p" "$pdf" - 2>/dev/null | tr -s ' ')"   # reading order: works for two-column PDFs too
     [ -z "$refpage" ] && echo "$t" | grep -qiE '^ *[0-9]* *r ?e ?f ?e ?r ?e ?n ?c ?e ?s *$' && refpage=$p
     [ -z "$apppage" ] && echo "$t" | grep -qiE '^ *[0-9]* *A +(a ?p ?p ?e ?n ?d ?i ?x)' && apppage=$p
   done

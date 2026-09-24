@@ -63,7 +63,8 @@ def pdf_facts(pdf: Path) -> dict:
         facts["paper"] = "letter" if abs(w - 612) < 2 and abs(h - 792) < 2 else ("a4" if abs(w - 595) < 3 and abs(h - 842) < 3 else "other")
     if facts.get("pages") and shutil.which("pdftotext"):
         for p in range(1, facts["pages"] + 1):
-            t = re.sub(r" +", " ", run(["pdftotext", "-f", str(p), "-l", str(p), "-layout", str(pdf), "-"]))
+            # reading order (no -layout): in two-column PDFs a heading then sits on its own line
+            t = re.sub(r" +", " ", run(["pdftotext", "-f", str(p), "-l", str(p), str(pdf), "-"]))
             if "references_page" not in facts and re.search(r"^\s*\d*\s*r\s?e\s?f\s?e\s?r\s?e\s?n\s?c\s?e\s?s\s*$", t, re.M | re.I):
                 facts["references_page"] = p
             if "appendix_page" not in facts and re.search(r"^\s*\d*\s*(?:A\s+)?a\s?p\s?p\s?e\s?n\s?d\s?i\s?x", t, re.M | re.I) and p > 1:
@@ -225,6 +226,9 @@ def main() -> int:
     if bst and bst != "TODO_CONFIRM":
         if bst.lower().startswith("set by"):
             add("bibliography style left to the style file", "FAIL" if have else "pass", f"found {have}" if have else "no \\bibliographystyle in the body")
+        elif tpl.get("bibliographystyle_default") or "choice" in bst.lower():
+            add("bibliography style", "pass" if len(have) == 1 else "FAIL",
+                f"found {have or 'none'}; the venue leaves the style to the authors (registry default {tpl.get('bibliographystyle_default')})")
         else:
             add("bibliography style", "pass" if have == [bst] else "FAIL", f"found {have or 'none'}, expected {bst}")
 

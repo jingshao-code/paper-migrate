@@ -138,8 +138,13 @@ def main() -> int:
             drop, why = True, "target style loads natbib"
         if not drop and d_tpl.get("section_numbering") == "numbered" and re.match(r"\s*\\setcounter\s*\{secnumdepth\}", ln):
             drop = True
-        if not drop and any(re.match(r"\s*\\" + re.escape(vm) + r"\b", ln) for vm in venue_macros):
-            drop = True
+        if not drop and any(re.match(r"\s*%?\s*\\" + re.escape(vm) + r"\b", ln) for vm in venue_macros):
+            drop = True                                       # also the commented toggle line (%\iclrfinalcopy ...)
+        if not drop:
+            pk = is_generic_package_line(ln)
+            if pk is not None and {x.strip() for x in pk.split(",")} <= provided:
+                drop = True                                   # the target style/header already loads it
+                log.append(f"dropped (provided by the target): {ln.strip()[:60]}")
         if drop:
             # multi-line macro (e.g. \pdfinfo{ ... })
             opens = ln.count("{") - ln.count("}")
@@ -151,6 +156,22 @@ def main() -> int:
             continue
         kept.append(ln)
         i += 1
+    forbidden = set((dst_v.get("rules") or {}).get("forbidden_packages") or [])
+    if forbidden:
+        cleaned = []
+        for ln in kept:
+            mm = re.match(r"(\s*)\\usepackage(\[[^\]]*\])?\{([^}]*)\}(.*)$", ln)
+            if mm:
+                names = [x.strip() for x in mm.group(3).split(",")]
+                bad = [x for x in names if x in forbidden]
+                if bad:
+                    keep_names = [x for x in names if x not in forbidden]
+                    log.append(f"removed forbidden package(s) at the target: {bad}")
+                    if not keep_names:
+                        continue
+                    ln = f"{mm.group(1)}\\usepackage{mm.group(2) or ''}{{{', '.join(keep_names)}}}{mm.group(4)}"
+            cleaned.append(ln)
+        kept = cleaned
     kept_text = "\n".join(kept).strip("\n")
     # the target may need xcolor before \definecolor when the source style loaded it implicitly
     if re.search(r"\\definecolor", kept_text) and not re.search(r"\\usepackage(\[[^\]]*\])?\{[^}]*xcolor", kept_text.split("\\definecolor")[0]):
@@ -192,10 +213,14 @@ def main() -> int:
             auth = re.sub(r"\\" + re.escape(vm) + r"\b", "", auth)
     auth = re.sub(r"(?m)^\s*%.*\n?", "", auth).strip()
     affil_text = re.sub(r"(?m)^\s*%.*\n?", "", (affil or "")).strip()
-    author_block = "\\author{" + auth
-    if affil_text:
-        author_block += " \\\\\n    " + affil_text
-    author_block += "\n}"
+    affil_macro = d_tpl.get("affiliations_macro")
+    if affil_macro:
+        author_block = "\\author{" + auth + "\n}\n\\" + affil_macro + "{" + (affil_text or "% TODO: move the affiliation lines from \\author{} into this block (target shape)") + "\n}"
+    else:
+        author_block = "\\author{" + auth
+        if affil_text:
+            author_block += " \\\\\n    " + affil_text
+        author_block += "\n}"
 
     # ---- anonymisation line for the stage -----------------------------------
     anon = d_tpl.get("anonymization") or {}
@@ -207,7 +232,7 @@ def main() -> int:
     header = [f"% Preamble drafted by paper-migrate for {dst_v.get('name', args.dst_venue)} ({args.stage}); source: {src_v.get('name', args.src_venue)}.",
               "% Everything below the marker is copied from the source preamble minus the source venue's own lines.",
               str(d_tpl.get("documentclass") or "\\documentclass{article}"),
-              str(d_tpl.get("style_line") or "% TODO: style line")]
+              str((d_tpl.get("style_line_by_stage") or {}).get(args.stage) or d_tpl.get("style_line") or "% TODO: style line")]
     for pk in d_tpl.get("packages_after_style") or []:
         header.append(f"\\usepackage{{{pk}}}")
     for extra in d_tpl.get("preamble_extras") or []:

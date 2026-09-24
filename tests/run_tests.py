@@ -306,6 +306,41 @@ def main() -> int:
         check("## Author to-do" in md and "AI use statement" in md.split("## Template")[0], "author to-do lists the missing required section first")
         check("compile_check: not run" in md and "## Rule check against ICLR 2027" in md, "missing inputs reported as not run; rule table present")
 
+        print("[5d] reverse direction: the migrated ICLR sample -> AAAI-27 (two-column target)")
+        rev = tmp / "rev"
+        rev.mkdir()
+        shutil.copytree(dst / "figures", rev / "figures")
+        shutil.copy(dst / "refs.bib", rev / "refs.bib")
+        for name in ("aaai2027.sty", "aaai2027.bst"):
+            (rev / name).write_text("% stand-in for tests\n")
+        rr = tmp / "rules_rev.json"
+        run(PY, S / "make_rules.py", "--src-venue", "iclr2027", "--dst-venue", "aaai2027", "--out", rr)
+        pr = tmp / "preamble_rev.tex"
+        r = run(PY, S / "draft_preamble.py", "--src", dst / "main.tex", "--src-venue", "iclr2027", "--dst-venue", "aaai2027", "--stage", "submission", "--out", pr)
+        dp2 = pr.read_text() if pr.exists() else ""
+        check(r.returncode == 0 and "\\usepackage[submission]{aaai2027}" in dp2, "AAAI style line for the submission stage")
+        check("hyperref" not in dp2 and "wrapfig" not in dp2 and "\\iclrfinalcopy" not in dp2, "packages AAAI forbids and the ICLR toggle removed")
+        check("\\affiliations{" in dp2 and "\\pdfinfo{" in dp2 and "\\frenchspacing" in dp2, "AAAI affiliations block and mandatory lines emitted")
+        r = run(PY, S / "migrate_tex.py", "--in", dst / "main.tex", "--out", rev / "main.tex", "--rules", rr, "--preamble", pr)
+        lr = tmp / "layout_rev.json"
+        r = run(PY, S / "layout_figures.py", "--src", dst / "main.tex", "--in", rev / "main.tex", "--out", rev / "main.tex", "--force",
+                "--src-venue", "iclr2027", "--dst-venue", "aaai2027", "--placement", "t", "--report", lr)
+        lrj = json.loads(lr.read_text()) if lr.exists() else {}
+        rout = (rev / "main.tex").read_text()
+        check(r.returncode == 0 and (lrj.get("two_column_target") or {}).get("figure_env_changes", 0) >= 1, "wide floats starred for the two-column target")
+        check("\\begin{figure*}" in rout and "\\textwidth" in rout, "full-width graphic sits in figure* sized in \\textwidth")
+        check("\\begin{wrapfigure}" not in rout and "\\begin{wraptable}" not in rout, "no wrapped floats in a two-column target")
+        r = run(PY, S / "body_diff.py", "--src", dst / "main.tex", "--dst", rev / "main.tex", "--json", tmp / "rev_diff.json")
+        rd = json.loads((tmp / "rev_diff.json").read_text())
+        check(r.returncode == 0 and rd["hunks"]["content"] == 0, "reverse migration keeps every word (content 0)")
+        r = run(PY, S / "check_compliance.py", "--venue", "aaai2027", "--project", rev, "--main", "main.tex", "--stage", "submission", "--json", tmp / "rev_comp.json")
+        rc = json.loads((tmp / "rev_comp.json").read_text())
+        fails = [c["rule"] for c in rc["checks"] if c["status"] == "FAIL"]
+        check(fails == ["official template files present and unmodified"], f"AAAI rules: only the stand-in style files fail ({fails})")
+        by2 = {c["rule"]: c["status"] for c in rc["checks"]}
+        check(by2.get("no forbidden packages") == "pass" and by2.get("anonymisation state for submission") == "pass" and by2.get("bibliography style left to the style file") == "pass",
+              "AAAI: no forbidden packages, [submission] active, no explicit bibliographystyle")
+
         print("[6] make_zip packages an Overleaf-ready archive")
         z = tmp / "out.zip"
         r = run(PY, S / "make_zip.py", "--project", dst, "--main", "main.tex", "--out", z, "--venue", "iclr2027")
