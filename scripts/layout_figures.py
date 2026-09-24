@@ -1034,16 +1034,19 @@ def wrap_float(text: str, spec: str, anchors: dict[str, str], project: Path, dst
         cw = strip_comments_keep_len(without)
         runs = text_runs(cw)
         def text_start(a: int, b: int) -> int | None:
-            seg = cw[a:b]
-            if FLOAT_RUN_RE.match(seg) or STOP_RUN_RE.match(seg):
-                return None
+            # skip heading/label lead lines first, then judge what remains
             off = a
-            for line in seg.split("\n"):
+            for line in cw[a:b].split("\n"):
                 if LEAD_LINE_RE.match(line) or not line.strip():
                     off += len(line) + 1
                     continue
                 break
-            return off if off < b else None
+            if off >= b:
+                return None
+            rest = cw[off:b]
+            if FLOAT_RUN_RE.match(rest) or STOP_RUN_RE.match(rest):
+                return None
+            return off
         before = [(a, b) for a, b in runs if b <= bs]
         after = [(a, b) for a, b in runs if a >= bs]
         for a, b in reversed(before[-2:]) if before else []:
